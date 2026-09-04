@@ -8,7 +8,7 @@ const { writeAudit } = require("../audit");
 
 const router = express.Router();
 const appRoot = path.resolve(__dirname, "..", "..", "..");
-const uploadRoot = path.join(appRoot, "uploads");
+const uploadRoot = path.resolve(appRoot, process.env.UPLOAD_PATH || "data/uploads");
 const sources = new Set(["orivea", "glantier", "whatsapp", "other"]);
 const permissions = new Set(["own_content", "approved", "shared_by_glantier", "unknown"]);
 const platforms = new Set(["instagram", "facebook", "tiktok", "pinterest"]);

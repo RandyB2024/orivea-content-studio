@@ -3,7 +3,7 @@ const path = require("path");
 const Database = require("better-sqlite3");
 
 const appRoot = path.resolve(__dirname, "..", "..");
-const dbPath = path.resolve(appRoot, process.env.DATABASE_PATH || "data/orivea-workspace.sqlite");
+const dbPath = path.resolve(appRoot, process.env.DATABASE_PATH || "data/orivea-content-studio.sqlite");
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new Database(dbPath);
@@ -250,4 +250,4 @@ function initDb() {
   Object.entries(defaults).forEach(([key, value]) => insert.run(key, value));
 }
 
-module.exports = { db, initDb };
+module.exports = { db, dbPath, initDb };

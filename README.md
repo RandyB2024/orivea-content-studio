@@ -7,7 +7,7 @@ Beveiligde Node/Express workspace voor ORIVÈA. Deze repo bevat:
 - uploadbibliotheek voor afbeeldingen en reels
 - social AI agent met concepten, goedkeuren, plannen en publiceren
 - beveiligde webhooks voor de ORIVÈA webshop
-- SQLite database voor Render of lokale hosting
+- lokale SQLite-database voor Windows-hosting
 
 ## Installatie
 
@@ -38,13 +38,7 @@ WORKSPACE_WEBHOOK_SECRET=...
 npm start
 ```
 
-Render gebruikt:
-
-- Build command: `npm install`
-- Start command: `npm start`
-- Health check: `/health`
-
-De server luistert op `0.0.0.0` en gebruikt `process.env.PORT || 3000`.
+Voor productie op Windows en publicatie via Cloudflare Tunnel volgt u [WINDOWS-DEPLOYMENT.md](WINDOWS-DEPLOYMENT.md). De server luistert standaard alleen op `127.0.0.1` en gebruikt `process.env.PORT || 3000`.
 
 ## Pagina's
 
@@ -131,7 +125,7 @@ node src/status-manager.js published <post-id> <naam>
 SQLite staat standaard op:
 
 ```text
-data/orivea-workspace.sqlite
+data/orivea-content-studio.sqlite
 ```
 
-Deze database wordt niet in Git opgeslagen. Configureer op Render een persistent disk als je data wilt behouden tussen deploys.
+Deze database wordt niet in Git opgeslagen en blijft persistent op de lokale Windows-machine. Maak periodiek een back-up met `npm run backup`.

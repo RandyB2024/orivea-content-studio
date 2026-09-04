@@ -1,10 +1,12 @@
 {
-  "name": "orivea-social-agent",
+  "name": "orivea-content-studio",
   "version": "1.0.0",
-  "description": "ORIVEA workspace dashboard met social AI agent, orders en klantbeheer.",
+  "description": "Private ORIVEA Content Studio voor lokale Windows-hosting.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:prod": "node server.js",
+    "backup": "node scripts/backup.js",
     "dev": "node server.js",
     "generate:daily": "node src/generate-daily-post.js",
     "generate:week": "node src/generate-weekly-calendar.js",

@@ -33,11 +33,8 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
   .filter(Boolean);
 const defaultAllowedOrigins = [
   "https://content.orivea.nl",
-  "https://workspace.orivea.nl",
-  "https://www.workspace.orivea.nl",
   "https://orivea.nl",
   "https://www.orivea.nl",
-  "https://orivea-workspace.onrender.com",
   "http://localhost:3000",
   "http://127.0.0.1:3000"
 ];
@@ -114,8 +111,17 @@ app.use((err, req, res, next) => {
   return res.status(500).sendFile(path.join(appRoot, "views", "dashboard.html"));
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, "0.0.0.0", () => {
+const port = Number(process.env.PORT) || 3000;
+const host = process.env.HOST || "127.0.0.1";
+const server = app.listen(port, host, () => {
   startScheduler();
-  console.log(`ORIVEA Content Studio actief op poort ${port}`);
+  console.log(`ORIVEA Content Studio actief op http://${host}:${port}`);
 });
+
+function shutdown(signal) {
+  console.log(`${signal} ontvangen; server wordt netjes afgesloten.`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

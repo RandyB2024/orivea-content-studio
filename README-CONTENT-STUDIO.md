@@ -1,31 +1,52 @@
 # ORIVÈA Content Studio
 
-Private Node.js/Express-app voor `https://content.orivea.nl`. SQLite bewaart content, campagnes, posts, platformstatussen, logs en sessies. Media staat buiten `public` en wordt alleen na login via een gecontroleerde route geleverd.
+Private Node.js/Express-app voor `https://content.orivea.nl`. De broncode staat in GitHub; GitHub Pages wordt niet gebruikt. De applicatie, SQLite-database, uploads en scheduler draaien op de eigen Windows-computer.
 
 ## Lokaal starten
 
-1. Voer `npm install` uit.
-2. Kopieer `.env.example` naar `.env`.
-3. Genereer een hash met `node -e "console.log(require('bcryptjs').hashSync('KIES-EEN-STERK-WACHTWOORD',12))"`.
-4. Vul `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH` en een willekeurige `SESSION_SECRET` van minstens 32 tekens in.
-5. Start met `npm start` en open `http://localhost:3000/login`.
+1. Installeer Node.js LTS en controleer `node --version` en `npm --version`.
+2. Voer in de projectmap `npm install` uit.
+3. Kopieer `.env.example` naar `.env`.
+4. Genereer een hash met `node -e "console.log(require('bcryptjs').hashSync('KIES-EEN-STERK-WACHTWOORD',12))"`.
+5. Vul minimaal `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `SESSION_SECRET` en `ENCRYPTION_KEY` in.
+6. Start met `npm start` en open `http://localhost:3000/login`.
 
-De database en tabellen worden automatisch aangemaakt. Zet op Render een persistent disk voor `data/` en `uploads/`. Gebruik build command `npm install`, start command `npm start` en healthcheck `/health`.
+De tabellen worden automatisch aangemaakt in `data/orivea-content-studio.sqlite`. Private media staat in `data/uploads`. Beide locaties zijn uitgesloten van Git.
 
-## Veiligheid en workflow
+## Productie draaien op Windows
 
-Alle dashboards vereisen login. Wachtwoorden worden uitsluitend als bcrypt-hash geaccepteerd. Sessies staan in SQLite; cookies zijn HttpOnly, SameSite=Lax en in productie Secure. Mutaties vereisen CSRF, login is begrensd, uploads worden op MIME-type en grootte gecontroleerd en alle responses krijgen `X-Robots-Tag: noindex, nofollow`.
+De volledige procedure voor automatisch starten, Cloudflare Tunnel en controles staat in [WINDOWS-DEPLOYMENT.md](WINDOWS-DEPLOYMENT.md). Productie gebruikt:
 
-Een post wordt alleen `scheduled` met goedgekeurde gebruiksrechten en `approved_at`. De server-scheduler claimt een post atomair. Zonder officiële social-koppeling wordt geen aanvraag uitgevoerd en ontstaat `action_required` met een publicatielog.
+```env
+NODE_ENV=production
+HOST=127.0.0.1
+PORT=3000
+BASE_URL=https://content.orivea.nl
+DATABASE_PATH=data/orivea-content-studio.sqlite
+UPLOAD_PATH=data/uploads
+```
 
-## Deployment en DNS
+Start handmatig met `npm run start:prod`. De server luistert uitsluitend op `127.0.0.1:3000`; open geen routerpoort en maak geen port-forwarding. Cloudflare Tunnel routeert `https://content.orivea.nl` naar `http://localhost:3000` en verzorgt publieke HTTPS.
 
-Maak bij Render een web service voor deze repository en koppel daarna een custom domain `content.orivea.nl`. Voeg bij de DNS-provider de CNAME toe die Render voor dit custom domain toont. HTTPS wordt door Render uitgegeven nadat DNS is gevalideerd.
+## Scheduler en offline gedrag
 
-De app hoort niet in webshopnavigatie, footer of sitemap. Callback-URL's zijn:
+De scheduler draait alleen zolang Windows en de Node-app actief zijn. Bij herstart worden vervallen geplande posts opnieuw gecontroleerd. Een post die meer dan twee uur is gemist wordt `action_required` en nooit automatisch uren of dagen later gepubliceerd. De gebruiker kiest daarna zelf **Nu publiceren** of **Annuleren**.
 
-- `https://content.orivea.nl/auth/meta/callback`
-- `https://content.orivea.nl/auth/tiktok/callback`
-- `https://content.orivea.nl/auth/pinterest/callback`
+## Back-up
 
-Back-up vóór deployment: kopieer de SQLite-database en de private `uploads/` map samen. Een interactieve ZIP/JSON export en importpreview zijn nog niet geïmplementeerd.
+Voer `npm run backup` uit. Dit maakt `backups/backup-YYYYMMDD-HHMMSS/` met:
+
+- een consistente SQLite-snapshot;
+- `metadata.json` zonder tokenwaarden;
+- een kopie van private uploads;
+- `upload-manifest.json`.
+
+Bewaar regelmatig een kopie buiten deze computer. De map `backups/` staat niet in Git.
+
+## Callback-URL's
+
+- Meta: `https://content.orivea.nl/auth/meta/callback`
+- TikTok: `https://content.orivea.nl/auth/tiktok/callback`
+- Pinterest: `https://content.orivea.nl/auth/pinterest/callback`
+
+De app blijft privé achter de eigen login. Alle pagina’s sturen `X-Robots-Tag: noindex, nofollow`; dashboardpagina’s bevatten ook een robots-meta-tag. Cloudflare Access kan optioneel als extra laag vóór de eigen login worden gezet.
