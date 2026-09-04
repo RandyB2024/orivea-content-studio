@@ -1,4 +1,5 @@
 const attempts = new Map();
+const crypto = require("crypto");
 
 function requireAuth(req, res, next) {
   if (req.session && req.session.user) return next();
@@ -17,6 +18,19 @@ function loginRateLimit(req, res, next) {
   return next();
 }
 
+function ensureCsrf(req, res, next) {
+  if (!req.session.csrfToken) req.session.csrfToken = crypto.randomBytes(32).toString("hex");
+  res.locals.csrfToken = req.session.csrfToken;
+  next();
+}
+
+function csrfProtection(req, res, next) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  const token = req.get("X-CSRF-Token") || req.body?._csrf;
+  if (token && req.session?.csrfToken && token.length === req.session.csrfToken.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(req.session.csrfToken))) return next();
+  return res.status(403).json({ error: "Ongeldige of ontbrekende CSRF-token." });
+}
+
 function verifyWebhookSecret(req, res, next) {
   const expected = process.env.WORKSPACE_WEBHOOK_SECRET;
   const provided = req.get("X-ORIVEA-WORKSPACE-SECRET");
@@ -24,4 +38,4 @@ function verifyWebhookSecret(req, res, next) {
   return next();
 }
 
-module.exports = { requireAuth, loginRateLimit, verifyWebhookSecret };
+module.exports = { requireAuth, loginRateLimit, verifyWebhookSecret, ensureCsrf, csrfProtection };

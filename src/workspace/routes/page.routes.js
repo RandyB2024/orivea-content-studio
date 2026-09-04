@@ -13,6 +13,12 @@ const pageMap = {
   "/assets": "assets.html",
   "/audit": "audit.html",
   "/settings": "settings.html"
+  ,"/content": "content.html"
+  ,"/campaigns": "campaigns.html"
+  ,"/calendar": "calendar.html"
+  ,"/posts/new": "post-editor.html"
+  ,"/history": "history.html"
+  ,"/settings/integrations": "integrations.html"
 };
 
 Object.entries(pageMap).forEach(([route, file]) => {

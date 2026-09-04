@@ -1,5 +1,11 @@
 const navItems = [
-  ["Overzicht", "/dashboard"],
+  ["Vandaag", "/dashboard"],
+  ["Content", "/content"],
+  ["Nieuwe post", "/posts/new"],
+  ["Kalender", "/calendar"],
+  ["Campagnes", "/campaigns"],
+  ["Publicaties", "/history"],
+  ["Integraties", "/settings/integrations"],
   ["Orders", "/orders"],
   ["Contact", "/contact"],
   ["Nieuwsbrief", "/newsletter"],
@@ -8,14 +14,16 @@ const navItems = [
   ["Auditlog", "/audit"],
   ["Instellingen", "/settings"]
 ];
+let csrfToken = "";
 
 function money(value) {
   return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(Number(value || 0));
 }
 
 async function api(url, options = {}) {
+  if (!csrfToken) csrfToken = (await fetch("/api/studio/csrf").then((response) => response.json())).csrfToken;
   const response = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken, ...(options.headers || {}) },
     ...options
   });
   if (!response.ok) throw new Error(await response.text());
@@ -26,7 +34,7 @@ function initNav() {
   document.querySelectorAll("[data-nav]").forEach((target) => {
     const current = window.location.pathname;
     target.innerHTML = `
-      <div class="brand"><strong>ORIVÈA</strong><span>Workspace</span></div>
+      <div class="brand"><strong>ORIVÈA</strong><span>Content Studio</span></div>
       <nav class="nav">
         ${navItems.map(([label, href]) => `<a class="${current === href ? "active" : ""}" href="${href}">${label}</a>`).join("")}
         <form method="post" action="/logout"><button type="submit">Uitloggen</button></form>
@@ -46,13 +54,13 @@ function bindSearch(loader) {
 }
 
 async function loadDashboard() {
-  const data = await api("/api/summary");
+  const data = await api("/api/studio/summary");
   document.getElementById("summaryCards").innerHTML = [
-    ["Orders", data.orders],
-    ["Open orders", data.openOrders],
-    ["Contact", data.contacts],
-    ["Nieuwsbrief", data.newsletter],
-    ["Omzet betaald", money(data.revenue)]
+    ["Content", data.content],
+    ["Ongebruikt", data.unused],
+    ["Rechten controleren", data.unknownRights],
+    ["Gepland", data.scheduled],
+    ["Actie vereist", data.failed]
   ].map(([label, value]) => `<article class="metric"><span>${label}</span><strong>${value}</strong></article>`).join("");
   if (data.warning) {
     document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel notice"><p>${data.warning}</p></section>`);
@@ -181,7 +189,8 @@ function initPage() {
     loadAssets();
     document.getElementById("uploadForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const response = await fetch("/api/assets/upload", { method: "POST", body: new FormData(event.currentTarget) });
+      if (!csrfToken) csrfToken = (await fetch("/api/studio/csrf").then((response) => response.json())).csrfToken;
+      const response = await fetch("/api/assets/upload", { method: "POST", headers: { "X-CSRF-Token": csrfToken }, body: new FormData(event.currentTarget) });
       if (!response.ok) alert(await response.text());
       event.currentTarget.reset();
       loadAssets();

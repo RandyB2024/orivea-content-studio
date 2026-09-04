@@ -14,7 +14,7 @@ body {
   margin: 0;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
   color: var(--ink);
-  background: radial-gradient(circle at top left, #fff 0, var(--paper) 30%, var(--parchment) 100%);
+  background: linear-gradient(140deg, #fff 0, var(--paper) 48%, var(--parchment) 100%);
 }
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; }
@@ -55,7 +55,8 @@ input, select, textarea {
 }
 textarea { min-height: 120px; resize: vertical; }
 
-.app-shell { min-height: 100vh; display: grid; grid-template-columns: 260px 1fr; }
+.app-shell { min-height: 100vh; display: grid; grid-template-columns: 260px minmax(0, 1fr); min-width: 0; }
+.sidebar, .main { min-width: 0; }
 .sidebar {
   position: sticky;
   top: 0;
@@ -148,13 +149,36 @@ td { color: var(--ink); }
 .asset-card img, .asset-card video { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 14px; background: #fff; }
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
 .warning { color: #8a5b14; font-weight: 700; }
+.panel h2, .content-card h2, .calendar-item h2, .integration-card h2 { font-family: Georgia, "Times New Roman", serif; font-size: 28px; margin: 8px 0 12px; }
+.form-panel { margin-bottom: 24px; }
+.form-panel summary { color: var(--gold); cursor: pointer; font-weight: 700; }
+.studio-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; margin-top: 24px; }
+.studio-form .wide, .platform-picker { grid-column: 1 / -1; }
+.platform-picker { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; border: 1px solid var(--line); }
+.platform-picker label { display: flex; align-items: center; gap: 8px; }
+.platform-picker input { width: auto; }
+.content-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(260px,1fr)); gap: 18px; }
+.content-card, .calendar-item, .integration-card { overflow: hidden; background: rgba(255,255,255,.76); border: 1px solid var(--line); border-radius: 8px; }
+.content-card img, .content-card video, .calendar-item img, .calendar-item video, .media-placeholder { display: block; width: 100%; aspect-ratio: 4/3; object-fit: cover; background: #eee9e2; }
+.media-placeholder { display: grid; place-items: center; color: var(--muted); }
+.card-body, .calendar-item, .integration-card { padding: 20px; }
+.source, .calendar-item time, .status { color: var(--gold); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.rights-warning { color: #7a4318; background: #fbf0df; border-left: 3px solid var(--gold); padding: 10px; }
+.calendar-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap: 16px; }
+.calendar-item img, .calendar-item video { margin-top: 14px; }
+.integration-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.notice { padding: 12px 16px; margin: 0 0 18px; border: 1px solid var(--line); }
+.notice.success { background: #edf5eb; color: #31562b; }
+.notice.error { background: #fff0ed; color: #842c22; }
 
 @media (max-width: 900px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .sidebar { position: relative; height: auto; }
+  .app-shell { grid-template-columns: minmax(0, 1fr); width: 100%; overflow: hidden; }
+  .sidebar { position: relative; height: auto; width: 100%; }
   .main { padding: 24px 16px; }
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .page-head h1 { font-size: clamp(34px, 12vw, 52px); }
   .toolbar, .action-panel, .upload-form { align-items: stretch; flex-direction: column; }
   .button { width: 100%; }
+  .studio-form, .integration-grid { grid-template-columns: 1fr; }
+  .studio-form .wide { grid-column: auto; }
 }

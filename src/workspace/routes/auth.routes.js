@@ -22,8 +22,11 @@ router.post("/login", loginRateLimit, async (req, res) => {
     byUser: username || "unknown"
   });
   if (!valid) return res.status(401).send("Ongeldige login.");
-  req.session.user = { username };
-  return res.redirect("/dashboard");
+  return req.session.regenerate((error) => {
+    if (error) return res.status(500).send("Sessie kon niet worden gestart.");
+    req.session.user = { username };
+    return req.session.save(() => res.redirect("/dashboard"));
+  });
 });
 
 router.post("/logout", (req, res) => {

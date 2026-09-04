@@ -7,7 +7,7 @@ const helmet = require("helmet");
 const cors = require("cors");
 
 const { initDb } = require("./src/workspace/db");
-const { requireAuth } = require("./src/workspace/middleware");
+const { requireAuth, ensureCsrf, csrfProtection } = require("./src/workspace/middleware");
 
 const authRoutes = require("./src/workspace/routes/auth.routes");
 const pageRoutes = require("./src/workspace/routes/page.routes");
@@ -19,15 +19,20 @@ const assetsRoutes = require("./src/workspace/routes/assets.routes");
 const auditRoutes = require("./src/workspace/routes/audit.routes");
 const settingsRoutes = require("./src/workspace/routes/settings.routes");
 const webhookRoutes = require("./src/workspace/routes/webhook.routes");
+const studioRoutes = require("./src/workspace/routes/studio.routes");
+const { startScheduler } = require("./src/workspace/scheduler");
+const SqliteSessionStore = require("./src/workspace/session-store");
 
 const app = express();
 const appRoot = __dirname;
 const isProduction = process.env.NODE_ENV === "production";
+if (isProduction && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)) throw new Error("SESSION_SECRET moet in productie minimaal 32 tekens bevatten.");
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 const defaultAllowedOrigins = [
+  "https://content.orivea.nl",
   "https://workspace.orivea.nl",
   "https://www.workspace.orivea.nl",
   "https://orivea.nl",
@@ -52,12 +57,14 @@ initDb();
 
 app.set("trust proxy", 1);
 app.use(helmet({ contentSecurityPolicy: false }));
+app.use((req, res, next) => { res.set("X-Robots-Tag", "noindex, nofollow"); next(); });
 app.use("/api", cors(corsOptions));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  name: "orivea_workspace.sid",
+  name: "orivea_content.sid",
   secret: process.env.SESSION_SECRET || "replace-this-session-secret",
+  store: new SqliteSessionStore(),
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -77,7 +84,10 @@ app.use(authRoutes);
 app.use("/api/webhooks", webhookRoutes);
 
 app.use(requireAuth);
+app.use(ensureCsrf);
+app.use(csrfProtection);
 app.use(pageRoutes);
+app.use("/api/studio", studioRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/newsletter", newsletterRoutes);
@@ -106,5 +116,6 @@ app.use((err, req, res, next) => {
 
 const port = process.env.PORT || 3000;
 app.listen(port, "0.0.0.0", () => {
-  console.log(`ORIVEA workspace actief op poort ${port}`);
+  startScheduler();
+  console.log(`ORIVEA Content Studio actief op poort ${port}`);
 });
