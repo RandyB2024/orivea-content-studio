@@ -1,6 +1,7 @@
 const navItems = [
   ["Vandaag", "/dashboard"],
   ["Content", "/content"],
+  ["Kennisbank", "/knowledge"],
   ["Nieuwe post", "/posts/new"],
   ["Kalender", "/calendar"],
   ["Campagnes", "/campaigns"],

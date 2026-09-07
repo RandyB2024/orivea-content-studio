@@ -205,6 +205,40 @@ function initDb() {
       FOREIGN KEY (post_id) REFERENCES studio_posts(id) ON DELETE CASCADE,
       FOREIGN KEY (media_asset_id) REFERENCES media_assets(id) ON DELETE RESTRICT
     );
+    CREATE TABLE IF NOT EXISTS knowledge_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, source_type TEXT NOT NULL,
+      file_name TEXT NOT NULL, file_path TEXT NOT NULL, mime_type TEXT NOT NULL, document_type TEXT NOT NULL,
+      campaign_id INTEGER, valid_from TEXT, valid_until TEXT, status TEXT NOT NULL DEFAULT 'processing',
+      extracted_text TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS knowledge_chunks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, document_id INTEGER NOT NULL, chunk_index INTEGER NOT NULL,
+      content TEXT NOT NULL, embedding_json TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(document_id,chunk_index), FOREIGN KEY (document_id) REFERENCES knowledge_documents(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS content_knowledge_links (
+      content_item_id INTEGER NOT NULL, document_id INTEGER NOT NULL, relevance REAL NOT NULL DEFAULT 0,
+      PRIMARY KEY(content_item_id,document_id), FOREIGN KEY(content_item_id) REFERENCES content_items(id) ON DELETE CASCADE,
+      FOREIGN KEY(document_id) REFERENCES knowledge_documents(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS post_knowledge_sources (
+      post_id INTEGER NOT NULL, document_id INTEGER NOT NULL, chunk_id INTEGER, reason TEXT,
+      PRIMARY KEY(post_id,document_id,chunk_id), FOREIGN KEY(post_id) REFERENCES studio_posts(id) ON DELETE CASCADE,
+      FOREIGN KEY(document_id) REFERENCES knowledge_documents(id) ON DELETE RESTRICT
+    );
+    CREATE TABLE IF NOT EXISTS media_tags (
+      media_asset_id INTEGER NOT NULL, tag TEXT NOT NULL, confidence REAL DEFAULT 1,
+      PRIMARY KEY(media_asset_id,tag), FOREIGN KEY(media_asset_id) REFERENCES media_assets(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS campaign_bundles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, campaign_id INTEGER, notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS bundle_items (
+      bundle_id INTEGER NOT NULL, item_type TEXT NOT NULL, item_id INTEGER NOT NULL,
+      PRIMARY KEY(bundle_id,item_type,item_id), FOREIGN KEY(bundle_id) REFERENCES campaign_bundles(id) ON DELETE CASCADE
+    );
 
     CREATE TABLE IF NOT EXISTS social_accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -283,7 +317,19 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_posts_schedule ON studio_posts(status, scheduled_at);
     CREATE INDEX IF NOT EXISTS idx_logs_post ON publication_logs(post_id, platform);
     CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status, priority, created_at);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document ON knowledge_chunks(document_id,chunk_index);
   `);
+
+  const addColumn=(table,column,definition)=>{if(!db.prepare(`PRAGMA table_info(${table})`).all().some(row=>row.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);};
+  addColumn("media_assets","media_description","TEXT");
+  addColumn("media_assets","width","INTEGER");
+  addColumn("media_assets","height","INTEGER");
+  addColumn("media_assets","aspect_ratio","TEXT");
+  addColumn("media_assets","disabled","INTEGER NOT NULL DEFAULT 0");
+  addColumn("studio_posts","quality_score","INTEGER NOT NULL DEFAULT 0");
+  addColumn("studio_posts","quality_status","TEXT NOT NULL DEFAULT 'draft'");
+  addColumn("studio_posts","knowledge_sources_used","TEXT");
+  addColumn("studio_posts","content_brief","TEXT");
 
   const defaults = {
     autoPublish: "false",

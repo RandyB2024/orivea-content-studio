@@ -19,7 +19,10 @@ const pageMap = {
   ,"/posts/new": "post-editor.html"
   ,"/history": "history.html"
   ,"/settings/integrations": "integrations.html"
+  ,"/knowledge": "knowledge.html"
 };
+router.get("/knowledge/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","knowledge-detail.html"),error=>error&&next(error)));
+router.get("/media/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","media-detail.html"),error=>error&&next(error)));
 
 Object.entries(pageMap).forEach(([route, file]) => {
   router.get(route, (req, res, next) => {

@@ -6,6 +6,7 @@ const multer = require("multer");
 const { db } = require("../db");
 const { writeAudit } = require("../audit");
 const { queueTask, emitEvent } = require("../agent");
+const sharp = require("sharp");
 
 const router = express.Router();
 const appRoot = path.resolve(__dirname, "..", "..", "..");
@@ -80,17 +81,21 @@ router.get("/media/:id", (req, res) => {
   if (!file.startsWith(path.resolve(uploadRoot)) || !fs.existsSync(file)) return res.status(404).end();
   res.type(media.mime_type).sendFile(file);
 });
-router.post("/content", upload.array("media", 10), (req, res) => {
+router.get("/media/:id/detail",(req,res)=>{const row=db.prepare(`SELECT m.*,c.title,c.source_type,c.category,c.product_reference,c.campaign_id,c.usage_permission,c.last_used,c.times_used,cp.name campaign_name FROM media_assets m JOIN content_items c ON c.id=m.content_item_id LEFT JOIN campaigns cp ON cp.id=c.campaign_id WHERE m.id=?`).get(req.params.id);if(!row)return res.status(404).json({error:"Media niet gevonden."});row.posts=db.prepare("SELECT p.id,p.title,p.status,p.scheduled_at FROM post_media pm JOIN studio_posts p ON p.id=pm.post_id WHERE pm.media_asset_id=? ORDER BY p.created_at DESC").all(req.params.id);res.json(row);});
+router.post("/media/:id/disable",(req,res)=>{db.prepare("UPDATE media_assets SET disabled=1 WHERE id=?").run(req.params.id);res.json({ok:true});});
+router.post("/content", upload.array("media", 10), async (req, res, next) => {
   const source = sources.has(req.body.source_type) ? req.body.source_type : "other";
   const permission = permissions.has(req.body.usage_permission) ? req.body.usage_permission : "unknown";
   if (!clean(req.body.title, 180) || !clean(req.body.category, 80) || !clean(req.body.content_type, 80)) return res.status(400).json({ error: "Titel, categorie en contenttype zijn verplicht." });
-  const files=req.files||[]; const inputs=files.length?files:[null];
+  const files=req.files||[]; const inputs=files.length?files:[null];const dimensions=new Map();
+  try{for(const file of files)if(file.mimetype.startsWith("image/"))dimensions.set(file.path,await sharp(file.path).metadata());}catch(error){return next(error);}
   const ids=db.transaction(()=>inputs.map((file,index)=>{
     const base=clean(req.body.title,180); const title=files.length>1?`${base} ${index+1}`:base;
     const type=file?(file.mimetype.startsWith("video/")?"video":"image"):clean(req.body.content_type,80);
     const inferredReference=clean(req.body.product_reference,100)||(file?.originalname.match(/\b\d{3}\b/)?.[0]||"");
     const result=db.prepare(`INSERT INTO content_items (title,source_type,source_name,content_type,category,caption_original,caption_orivea,product_reference,campaign_id,valid_from,valid_until,usage_permission,notes,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(title,source,clean(req.body.source_name,120),type,clean(req.body.category,80),clean(req.body.caption_original),clean(req.body.caption_orivea),inferredReference,req.body.campaign_id||null,req.body.valid_from||null,req.body.valid_until||null,permission,clean(req.body.notes),"new");
-    if(file)db.prepare(`INSERT INTO media_assets (content_item_id,media_type,media_path,thumbnail_path,original_name,mime_type,size) VALUES (?,?,?,?,?,?,?)`).run(result.lastInsertRowid,type,path.relative(appRoot,file.path),type==="image"?path.relative(appRoot,file.path):null,file.originalname,file.mimetype,file.size);
+    if(file){let width=null,height=null,ratio=null;if(type==="image"){try{const metadata=dimensions.get(file.path)||{};width=metadata.width;height=metadata.height;const value=width/height;ratio=Math.abs(value-1)<.08?"1:1":Math.abs(value-.8)<.08?"4:5":Math.abs(value-.667)<.08?"2:3":Math.abs(value-.5625)<.08?"9:16":value>1.15?"landscape":"portrait";}catch{}}
+      db.prepare(`INSERT INTO media_assets (content_item_id,media_type,media_path,thumbnail_path,original_name,mime_type,size,media_description,width,height,aspect_ratio) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(result.lastInsertRowid,type,path.relative(appRoot,file.path),type==="image"?path.relative(appRoot,file.path):null,file.originalname,file.mimetype,file.size,clean(req.body.media_description,500),width,height,ratio);}
     return {id:Number(result.lastInsertRowid),title};
   }))();
   for(const item of ids){writeAudit({entityType:"content",entityId:item.id,action:"create",byUser:req.session.user.username});queueContent(item.id,item.title,permission);}

@@ -10,7 +10,8 @@
     "dev": "node server.js",
     "generate:daily": "node src/generate-daily-post.js",
     "generate:week": "node src/generate-weekly-calendar.js",
-    "check": "node src/check-agent.js"
+    "check": "node src/check-agent.js",
+    "test:knowledge": "node scripts/test-knowledge.js"
   },
   "keywords": [
     "orivea",
@@ -27,9 +28,13 @@
     "better-sqlite3": "^11.10.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-session": "^1.18.1",
     "helmet": "^8.1.0",
-    "multer": "^1.4.5-lts.2"
+    "mammoth": "^1.12.2",
+    "multer": "^1.4.5-lts.2",
+    "pdf-parse": "^2.4.5",
+    "sharp": "^0.35.4"
   }
 }
