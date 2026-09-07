@@ -196,6 +196,11 @@ function initDb() {
       UNIQUE(post_id, platform),
       FOREIGN KEY (post_id) REFERENCES studio_posts(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS post_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, post_id INTEGER NOT NULL, label TEXT,
+      platform_payload TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      applied_at TEXT, FOREIGN KEY(post_id) REFERENCES studio_posts(id) ON DELETE CASCADE
+    );
 
     CREATE TABLE IF NOT EXISTS post_media (
       post_id INTEGER NOT NULL,

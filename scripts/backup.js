@@ -15,7 +15,7 @@ async function run() {
   fs.mkdirSync(databaseDir, { recursive: true });
   await db.backup(path.join(databaseDir, "orivea-content-studio.sqlite"));
 
-  const tables = ["campaigns", "campaign_bundles", "bundle_items", "content_items", "content_knowledge_links", "knowledge_documents", "knowledge_chunks", "media_assets", "media_tags", "studio_posts", "post_media", "post_knowledge_sources", "post_platforms", "social_accounts", "publication_logs", "ai_generations", "agent_tasks", "agent_events", "agent_state", "settings"];
+  const tables = ["campaigns", "campaign_bundles", "bundle_items", "content_items", "content_knowledge_links", "knowledge_documents", "knowledge_chunks", "media_assets", "media_tags", "studio_posts", "post_media", "post_knowledge_sources", "post_platforms", "post_versions", "social_accounts", "publication_logs", "ai_generations", "agent_tasks", "agent_events", "agent_state", "settings"];
   const metadata = Object.fromEntries(tables.map((table) => [table, db.prepare(`SELECT * FROM ${table}`).all().map((row) => {
     if ("access_token_encrypted" in row) row.access_token_encrypted = row.access_token_encrypted ? "[REDACTED]" : null;
     if ("refresh_token_encrypted" in row) row.refresh_token_encrypted = row.refresh_token_encrypted ? "[REDACTED]" : null;
