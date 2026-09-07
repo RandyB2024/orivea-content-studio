@@ -6,6 +6,42 @@ const { toNumber } = require("../utils");
 
 const router = express.Router();
 router.use(verifyWebhookSecret);
+const scentClubAttempts = new Map();
+const scentClubSources = new Set(["orivea.nl", "www.orivea.nl", "emailjs", "scent-club"]);
+const scentClubPlans = { essential: 17.95, signature: 22.95, duo: 34.95 };
+
+function scentClubRateLimit(req, res, next) {
+  const key = req.ip || "unknown";
+  const now = Date.now();
+  const recent = (scentClubAttempts.get(key) || []).filter((time) => now - time < 15 * 60 * 1000);
+  if (recent.length >= 30) return res.status(429).json({ error: "Te veel aanvragen." });
+  recent.push(now);
+  scentClubAttempts.set(key, recent);
+  return next();
+}
+
+router.post("/scent-club-request", scentClubRateLimit, (req, res) => {
+  if (!req.is("application/json")) return res.status(415).json({ error: "Content-Type application/json vereist." });
+  const body = req.body || {};
+  const required = ["first_name", "last_name", "email", "plan", "preference_gender", "preference_family", "selection_mode"];
+  const missing = required.filter((key) => !String(body[key] || "").trim());
+  if (missing.length) return res.status(400).json({ error: `Ontbrekende velden: ${missing.join(", ")}.` });
+  const plan = String(body.plan).trim().toLowerCase();
+  const source = String(body.source || "orivea.nl").trim().toLowerCase();
+  if (!scentClubPlans[plan]) return res.status(400).json({ error: "Onbekend abonnement." });
+  if (!scentClubSources.has(source)) return res.status(400).json({ error: "Onbekende bron." });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.email))) return res.status(400).json({ error: "Ongeldig e-mailadres." });
+  const externalId = String(body.external_id || "").trim().slice(0, 100) || null;
+  if (externalId) {
+    const existing = db.prepare("SELECT id FROM scent_club_requests WHERE external_id=?").get(externalId);
+    if (existing) return res.json({ ok: true, duplicate: true, id: existing.id });
+  }
+  const result = db.prepare(`INSERT INTO scent_club_requests (external_id,first_name,last_name,email,phone,plan,monthly_price,preference_gender,preference_family,selection_mode,source,notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    externalId, String(body.first_name).trim().slice(0,80), String(body.last_name).trim().slice(0,120), String(body.email).trim().toLowerCase().slice(0,254), String(body.phone || "").trim().slice(0,40), plan, scentClubPlans[plan], String(body.preference_gender).trim().slice(0,40), String(body.preference_family).trim().slice(0,60), String(body.selection_mode).trim().slice(0,80), source, String(body.notes || "").trim().slice(0,2000)
+  );
+  writeAudit({ entityType: "scent_club_request", entityId: result.lastInsertRowid, action: "webhook_create", byUser: "webhook" });
+  return res.status(201).json({ ok: true, id: Number(result.lastInsertRowid) });
+});
 
 router.post("/order", (req, res) => {
   const body = req.body || {};

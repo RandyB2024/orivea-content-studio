@@ -20,7 +20,11 @@ const pageMap = {
   ,"/history": "history.html"
   ,"/settings/integrations": "integrations.html"
   ,"/knowledge": "knowledge.html"
+  ,"/scent-club": "scent-club.html"
+  ,"/scent-club/requests": "scent-club-requests.html"
+  ,"/scent-club/members": "scent-club-members.html"
 };
+router.get("/scent-club/members/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","scent-club-member-detail.html"),error=>error&&next(error)));
 router.get("/knowledge/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","knowledge-detail.html"),error=>error&&next(error)));
 router.get("/media/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","media-detail.html"),error=>error&&next(error)));
 router.get("/posts/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","post-preview.html"),error=>error&&next(error)));

@@ -7,6 +7,7 @@ const navItems = [
   ["Campagnes", "/campaigns"],
   ["Publicaties", "/history"],
   ["Integraties", "/settings/integrations"],
+  ["Scent Club", "/scent-club"],
   ["Orders", "/orders"],
   ["Contact", "/contact"],
   ["Nieuwsbrief", "/newsletter"],
@@ -37,7 +38,7 @@ function initNav() {
     target.innerHTML = `
       <div class="brand"><strong>ORIVÈA</strong><span>Content Studio</span></div>
       <nav class="nav">
-        ${navItems.map(([label, href]) => `<a class="${current === href ? "active" : ""}" href="${href}">${label}</a>`).join("")}
+        ${navItems.map(([label, href]) => `<a class="${current === href || (href === "/scent-club" && current.startsWith("/scent-club")) ? "active" : ""}" href="${href}">${label}</a>`).join("")}
         <form method="post" action="/logout"><button type="submit">Uitloggen</button></form>
       </nav>
     `;
@@ -55,13 +56,16 @@ function bindSearch(loader) {
 }
 
 async function loadDashboard() {
-  const data = await api("/api/studio/summary");
+  const [data, scent] = await Promise.all([api("/api/studio/summary"), api("/api/scent-club/summary")]);
   document.getElementById("summaryCards").innerHTML = [
     ["Content", data.content],
     ["Ongebruikt", data.unused],
     ["Rechten controleren", data.unknownRights],
     ["Gepland", data.scheduled],
-    ["Actie vereist", data.failed]
+    ["Actie vereist", data.failed],
+    ["Scent Club actief", scent.active],
+    ["Scent Club aanvragen", scent.newRequests],
+    ["Scent Club actie nodig", scent.actionRequired]
   ].map(([label, value]) => `<article class="metric"><span>${label}</span><strong>${value}</strong></article>`).join("");
   if (data.warning) {
     document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel notice"><p>${data.warning}</p></section>`);

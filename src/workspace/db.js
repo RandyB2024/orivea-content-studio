@@ -318,11 +318,82 @@ function initDb() {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS scent_club_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      external_id TEXT UNIQUE,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      plan TEXT NOT NULL,
+      monthly_price REAL NOT NULL,
+      preference_gender TEXT NOT NULL,
+      preference_family TEXT NOT NULL,
+      selection_mode TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'new',
+      source TEXT NOT NULL DEFAULT 'orivea.nl',
+      notes TEXT,
+      last_action_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      converted_member_id INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS scent_club_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id INTEGER UNIQUE,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      plan TEXT NOT NULL,
+      monthly_price REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      started_at TEXT NOT NULL,
+      next_billing_date TEXT,
+      preference_gender TEXT NOT NULL,
+      preference_family TEXT NOT NULL,
+      selection_mode TEXT NOT NULL,
+      payment_status TEXT,
+      last_payment_at TEXT,
+      last_payment_amount REAL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(request_id) REFERENCES scent_club_requests(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS scent_club_selections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id INTEGER NOT NULL,
+      month TEXT NOT NULL,
+      fragrance_reference TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      deadline TEXT,
+      selected_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(member_id, month),
+      FOREIGN KEY(member_id) REFERENCES scent_club_members(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS scent_club_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id INTEGER,
+      request_id INTEGER,
+      event_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      by_user TEXT,
+      metadata TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(member_id) REFERENCES scent_club_members(id) ON DELETE CASCADE,
+      FOREIGN KEY(request_id) REFERENCES scent_club_requests(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_content_status ON content_items(status, category);
     CREATE INDEX IF NOT EXISTS idx_posts_schedule ON studio_posts(status, scheduled_at);
     CREATE INDEX IF NOT EXISTS idx_logs_post ON publication_logs(post_id, platform);
     CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status, priority, created_at);
     CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document ON knowledge_chunks(document_id,chunk_index);
+    CREATE INDEX IF NOT EXISTS idx_scent_requests_status ON scent_club_requests(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_scent_members_status ON scent_club_members(status, started_at);
+    CREATE INDEX IF NOT EXISTS idx_scent_selections_month ON scent_club_selections(month, status);
   `);
 
   const addColumn=(table,column,definition)=>{if(!db.prepare(`PRAGMA table_info(${table})`).all().some(row=>row.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);};
