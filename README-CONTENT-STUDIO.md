@@ -50,3 +50,13 @@ Bewaar regelmatig een kopie buiten deze computer. De map `backups/` staat niet i
 - Pinterest: `https://content.orivea.nl/auth/pinterest/callback`
 
 De app blijft privé achter de eigen login. Alle pagina’s sturen `X-Robots-Tag: noindex, nofollow`; dashboardpagina’s bevatten ook een robots-meta-tag. Cloudflare Access kan optioneel als extra laag vóór de eigen login worden gezet.
+
+## Lokale AI-medewerker
+
+De Ollama-integratie, auto-approvevoorwaarden, fallback en agentbediening staan beschreven in [OLLAMA-AUTOMATION.md](OLLAMA-AUTOMATION.md). Ollama moet op Windows actief zijn voor AI-generatie; de rest van Content Studio blijft zonder Ollama beschikbaar.
+
+## Mediabibliotheek
+
+Een upload met meerdere bestanden wordt als afzonderlijke contentitems opgeslagen, met gedeelde bron-, campagne-, rechten- en geldigheidsmetadata. Afbeeldingen zijn kandidaten voor Instagram, Facebook en Pinterest; video's voor Instagram Reels en TikTok. De originele media blijven ongewijzigd en worden nooit automatisch gecropt.
+
+Selecteer twee tot tien afbeeldingen om één carouselconcept te maken. **Gebruik vandaag** en **Plan deze week** zoeken een vrij publicatiemoment, zodat batchuploads over de kalender worden verdeeld.

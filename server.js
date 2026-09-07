@@ -20,6 +20,8 @@ const auditRoutes = require("./src/workspace/routes/audit.routes");
 const settingsRoutes = require("./src/workspace/routes/settings.routes");
 const webhookRoutes = require("./src/workspace/routes/webhook.routes");
 const studioRoutes = require("./src/workspace/routes/studio.routes");
+const agentRoutes = require("./src/workspace/routes/agent.routes");
+const { startAgent } = require("./src/workspace/agent");
 const { startScheduler } = require("./src/workspace/scheduler");
 const SqliteSessionStore = require("./src/workspace/session-store");
 
@@ -85,6 +87,7 @@ app.use(ensureCsrf);
 app.use(csrfProtection);
 app.use(pageRoutes);
 app.use("/api/studio", studioRoutes);
+app.use("/api/agent", agentRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/newsletter", newsletterRoutes);
@@ -115,6 +118,7 @@ const port = Number(process.env.PORT) || 3000;
 const host = process.env.HOST || "127.0.0.1";
 const server = app.listen(port, host, () => {
   startScheduler();
+  startAgent();
   console.log(`ORIVEA Content Studio actief op http://${host}:${port}`);
 });
 

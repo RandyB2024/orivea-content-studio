@@ -197,6 +197,15 @@ function initDb() {
       FOREIGN KEY (post_id) REFERENCES studio_posts(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS post_media (
+      post_id INTEGER NOT NULL,
+      media_asset_id INTEGER NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (post_id, media_asset_id),
+      FOREIGN KEY (post_id) REFERENCES studio_posts(id) ON DELETE CASCADE,
+      FOREIGN KEY (media_asset_id) REFERENCES media_assets(id) ON DELETE RESTRICT
+    );
+
     CREATE TABLE IF NOT EXISTS social_accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       platform TEXT NOT NULL UNIQUE,
@@ -227,10 +236,53 @@ function initDb() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (post_id) REFERENCES studio_posts(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS ai_generations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content_item_id INTEGER,
+      model TEXT NOT NULL,
+      generated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      confidence REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL,
+      latency_ms INTEGER,
+      error_message TEXT,
+      FOREIGN KEY (content_item_id) REFERENCES content_items(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS agent_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'queued',
+      priority TEXT NOT NULL DEFAULT 'normal',
+      related_content_id INTEGER,
+      related_post_id INTEGER,
+      requires_user_action INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      started_at TEXT,
+      completed_at TEXT,
+      error_message TEXT,
+      FOREIGN KEY (related_content_id) REFERENCES content_items(id) ON DELETE SET NULL,
+      FOREIGN KEY (related_post_id) REFERENCES studio_posts(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS agent_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info',
+      related_task_id INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (related_task_id) REFERENCES agent_tasks(id) ON DELETE SET NULL
+    );
+    CREATE TABLE IF NOT EXISTS agent_state (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
 
     CREATE INDEX IF NOT EXISTS idx_content_status ON content_items(status, category);
     CREATE INDEX IF NOT EXISTS idx_posts_schedule ON studio_posts(status, scheduled_at);
     CREATE INDEX IF NOT EXISTS idx_logs_post ON publication_logs(post_id, platform);
+    CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status, priority, created_at);
   `);
 
   const defaults = {
@@ -244,7 +296,14 @@ function initDb() {
     contentReuseCooldownDays: "21",
     productReuseCooldownDays: "7",
     defaultPostingTimes: "09:30,19:30",
-    defaultPlatforms: "instagram,facebook,pinterest"
+    defaultPlatforms: "instagram,facebook,pinterest",
+    agentPaused: "false",
+    autoApproveTrustedContent: process.env.AUTO_APPROVE_TRUSTED_CONTENT || "false",
+    aiAutoApproveMinConfidence: process.env.AI_AUTO_APPROVE_MIN_CONFIDENCE || "0.90",
+    aiBrandTone: "ORIVÈA premium/fris",
+    aiSalesIntensity: "medium-low",
+    aiEmojiUsage: "minimal",
+    aiCaptionLength: "medium"
   };
   const insert = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
   Object.entries(defaults).forEach(([key, value]) => insert.run(key, value));

@@ -88,6 +88,7 @@ Open geen poort 3000 in Windows Firewall of de router. Het gewenste pad is: inte
 4. Log in en test dashboard, contentupload, kalender en publicatielog.
 5. Herstart de Node-taak en controleer dat content, uploads en geplande posts behouden zijn.
 6. Voer `npm run backup` uit en controleer de timestampmap.
+7. Controleer met `Invoke-RestMethod http://127.0.0.1:11434/api/tags` dat Ollama na aanmelden bereikbaar is.
 
 Als de computer uitstaat, slaapt of geen internet heeft, is Content Studio offline en publiceert de scheduler niet.
 

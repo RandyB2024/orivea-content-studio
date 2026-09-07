@@ -1,0 +1,38 @@
+const express = require("express");
+const { db } = require("../db");
+const ollama = require("../../../services/ollamaService");
+const { events, emitEvent, queueTask, tick } = require("../agent");
+
+const router = express.Router();
+function getState(key){return db.prepare("SELECT value,updated_at FROM agent_state WHERE key=?").get(key)||null;}
+function summary(){
+  const current=db.prepare("SELECT * FROM agent_tasks WHERE status='working' ORDER BY started_at DESC LIMIT 1").get()||null;
+  const next=db.prepare("SELECT * FROM agent_tasks WHERE status='queued' ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,created_at LIMIT 1").get()||null;
+  const pending=db.prepare("SELECT * FROM agent_tasks WHERE status IN ('queued','waiting') ORDER BY requires_user_action DESC,created_at DESC LIMIT 20").all();
+  const actions=db.prepare("SELECT * FROM agent_tasks WHERE requires_user_action=1 AND status IN ('waiting','failed') ORDER BY created_at DESC LIMIT 20").all();
+  const last=getState("last_heartbeat"); const paused=(db.prepare("SELECT value FROM settings WHERE key='agentPaused'").get()?.value||"false")==="true";
+  const stale=!last||Date.now()-Date.parse(`${last.updated_at}Z`)>60000;
+  return {status:stale?"offline":paused?"waiting":current?"working":"active",current_task:current,next_task:next,pending_tasks:pending,user_actions_required:actions,last_activity:getState("last_activity"),last_ollama_contact:getState("last_ollama_contact"),last_scheduler_run:getState("last_scheduler_run"),today_summary:`Vandaag zijn ${db.prepare("SELECT COUNT(*) count FROM studio_posts WHERE date(created_at)=date('now','localtime')").get().count} posts voorbereid.`};
+}
+router.get("/summary",(req,res)=>res.json(summary()));
+router.get("/events",(req,res)=>res.json(db.prepare("SELECT * FROM agent_events ORDER BY id DESC LIMIT 60").all()));
+router.get("/health",async(req,res)=>res.json(await ollama.health()));
+router.get("/stream",(req,res)=>{res.set({"Content-Type":"text/event-stream","Cache-Control":"no-cache","Connection":"keep-alive"});res.flushHeaders();const send=(event)=>res.write(`data: ${JSON.stringify(event)}\n\n`);send({type:"summary",data:summary()});const listener=(event)=>send({type:"event",data:event});events.on("event",listener);const heartbeat=setInterval(()=>res.write(": heartbeat\n\n"),20000);req.on("close",()=>{clearInterval(heartbeat);events.off("event",listener);});});
+router.post("/pause",(req,res)=>{db.prepare("UPDATE settings SET value='true',updated_at=CURRENT_TIMESTAMP WHERE key='agentPaused'").run();emitEvent("agent_paused","Ik ben gepauzeerd en wacht op jouw seintje.","warning");res.json({ok:true});});
+router.post("/resume",(req,res)=>{db.prepare("UPDATE settings SET value='false',updated_at=CURRENT_TIMESTAMP WHERE key='agentPaused'").run();emitEvent("agent_resumed","Ik ben hervat en controleer de werklijst.","success");tick();res.json({ok:true});});
+router.post("/analyze",(req,res)=>{const rows=db.prepare("SELECT id,title,usage_permission FROM content_items WHERE id NOT IN (SELECT related_content_id FROM agent_tasks WHERE task_type='analyze_content' AND status IN ('queued','working','done')) ORDER BY created_at DESC LIMIT 20").all();for(const row of rows)queueTask({taskType:"analyze_content",title:`Content analyseren: ${row.title}`,contentId:row.id,priority:row.usage_permission==="unknown"?"high":"normal",userAction:row.usage_permission==="unknown"});res.json({queued:rows.length});});
+router.post("/week",(req,res)=>{const content=db.prepare("SELECT id,title FROM content_items WHERE usage_permission IN ('own_content','approved','shared_by_glantier') AND id NOT IN (SELECT related_content_id FROM agent_tasks WHERE status IN ('queued','working')) ORDER BY times_used ASC,favorite DESC,last_used ASC LIMIT 7").all();for(const row of content)queueTask({taskType:"analyze_content",title:`Weekvoorstel voorbereiden: ${row.title}`,contentId:row.id});emitEvent("week_plan",`Ik heb ${content.length} items op de werklijst gezet voor het weekvoorstel.`,content.length?"success":"warning");res.json({queued:content.length});});
+router.post("/tasks/:id/later",(req,res)=>{db.prepare("UPDATE agent_tasks SET status='waiting',requires_user_action=1 WHERE id=?").run(req.params.id);res.json({ok:true});});
+router.post("/posts/:id/regenerate",(req,res)=>{const post=db.prepare("SELECT p.id,c.id content_id,c.title FROM studio_posts p JOIN content_items c ON c.id=p.content_item_id WHERE p.id=?").get(req.params.id);if(!post)return res.status(404).json({error:"Post niet gevonden."});const instruction=["korter","luxer","minder commercieel","meer productgericht","andere hook","andere CTA"].includes(req.body.instruction)?req.body.instruction:"";const id=queueTask({taskType:"analyze_content",title:`Caption opnieuw genereren (${instruction||"nieuwe variant"}): ${post.title}`,description:instruction,contentId:post.content_id,postId:post.id});res.status(202).json({taskId:id});});
+router.post("/chat",async(req,res)=>{
+  const text=String(req.body.message||"").trim().slice(0,500);if(!text)return res.status(400).json({error:"Typ een vraag."});
+  if(/nu publiceren|publiceer nu/i.test(text))return res.json({reply:"Publiceren heeft externe impact. Open de post en bevestig daar eerst de platformen; ik heb niets gepubliceerd.",requiresConfirmation:true});
+  if(/wat.*(vandaag|klaar)|wat moet ik/i.test(text)){const data=summary();return res.json({reply:`${data.today_summary} Er zijn ${data.user_actions_required.length} acties waarvoor ik jou nodig heb.`,action:"show_summary"});}
+  if(/plan.*week|weekplanning/i.test(text)){return res.json({reply:"Ik kan een weekvoorstel maken. Gebruik ‘Nu weekplanning maken’; daarna kun je ieder voorstel controleren.",action:"suggest_week"});}
+  if(/korter|luxer|minder commercieel|productgericht|andere hook|andere cta/i.test(text))return res.json({reply:"Open de betreffende post en kies Opnieuw genereren met die stijl. Ik wijzig niets zonder een concrete post.",action:"select_post"});
+  const command=await ollama.interpretCommand(text);
+  if(command.action==="create_task"&&command.title){const taskId=queueTask({taskType:"manual",title:command.title});return res.json({reply:`Ik heb ‘${command.title}’ aan mijn werklijst toegevoegd.`,action:"task_created",taskId});}
+  if(command.action==="reschedule_post"&&command.post_id&&Date.parse(command.target_datetime)>Date.now()){const post=db.prepare("SELECT id,status FROM studio_posts WHERE id=? AND status IN ('draft','scheduled')").get(command.post_id);if(post){db.prepare("UPDATE studio_posts SET scheduled_at=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(new Date(command.target_datetime).toISOString(),post.id);emitEvent("post_rescheduled",`Ik heb post ${post.id} verplaatst naar ${new Date(command.target_datetime).toLocaleString("nl-NL")}.`,"success");return res.json({reply:`Post ${post.id} is verplaatst.`,action:"rescheduled"});}}
+  return res.json({reply:"Ik kan je planning samenvatten, een weekvoorstel voorbereiden of een bestaande post laten herschrijven. Voor deze vraag heb ik een concretere post of datum nodig.",action:"none"});
+});
+module.exports=router;

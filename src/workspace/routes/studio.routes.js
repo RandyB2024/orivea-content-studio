@@ -5,6 +5,7 @@ const express = require("express");
 const multer = require("multer");
 const { db } = require("../db");
 const { writeAudit } = require("../audit");
+const { queueTask, emitEvent } = require("../agent");
 
 const router = express.Router();
 const appRoot = path.resolve(__dirname, "..", "..", "..");
@@ -37,6 +38,12 @@ function getContent(id) {
   return db.prepare(`SELECT c.*, cp.name campaign_name, m.id media_id, m.media_type, m.original_name
     FROM content_items c LEFT JOIN campaigns cp ON cp.id=c.campaign_id LEFT JOIN media_assets m ON m.content_item_id=c.id
     WHERE c.id=?`).get(id);
+}
+function queueContent(contentId, title, permission, description="") {
+  if (permission === "unknown") {
+    queueTask({ taskType:"analyze_content", title:`Gebruiksrechten controleren: ${title}`, description, contentId, priority:"high", userAction:true });
+    emitEvent("rights_required",`Ik heb ${title} opgeslagen, maar wacht op bevestiging van de gebruiksrechten.`,"warning");
+  } else queueTask({ taskType:"analyze_content", title:`Content analyseren: ${title}`, description, contentId });
 }
 
 router.get("/csrf", (req, res) => res.json({ csrfToken: req.session.csrfToken }));
@@ -77,16 +84,20 @@ router.post("/content", upload.array("media", 10), (req, res) => {
   const source = sources.has(req.body.source_type) ? req.body.source_type : "other";
   const permission = permissions.has(req.body.usage_permission) ? req.body.usage_permission : "unknown";
   if (!clean(req.body.title, 180) || !clean(req.body.category, 80) || !clean(req.body.content_type, 80)) return res.status(400).json({ error: "Titel, categorie en contenttype zijn verplicht." });
-  const create = db.transaction(() => {
-    const result = db.prepare(`INSERT INTO content_items (title,source_type,source_name,content_type,category,caption_original,caption_orivea,product_reference,campaign_id,valid_from,valid_until,usage_permission,notes,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-      clean(req.body.title,180), source, clean(req.body.source_name,120), clean(req.body.content_type,80), clean(req.body.category,80), clean(req.body.caption_original), clean(req.body.caption_orivea), clean(req.body.product_reference,100), req.body.campaign_id || null, req.body.valid_from || null, req.body.valid_until || null, permission, clean(req.body.notes), "new"
-    );
-    for (const file of req.files || []) db.prepare(`INSERT INTO media_assets (content_item_id,media_type,media_path,original_name,mime_type,size) VALUES (?,?,?,?,?,?)`).run(result.lastInsertRowid, file.mimetype.startsWith("video/") ? "video" : "image", path.relative(appRoot,file.path), file.originalname, file.mimetype, file.size);
-    return result.lastInsertRowid;
-  })();
-  writeAudit({ entityType:"content", entityId:create, action:"create", byUser:req.session.user.username });
-  res.status(201).json(getContent(create));
+  const files=req.files||[]; const inputs=files.length?files:[null];
+  const ids=db.transaction(()=>inputs.map((file,index)=>{
+    const base=clean(req.body.title,180); const title=files.length>1?`${base} ${index+1}`:base;
+    const type=file?(file.mimetype.startsWith("video/")?"video":"image"):clean(req.body.content_type,80);
+    const inferredReference=clean(req.body.product_reference,100)||(file?.originalname.match(/\b\d{3}\b/)?.[0]||"");
+    const result=db.prepare(`INSERT INTO content_items (title,source_type,source_name,content_type,category,caption_original,caption_orivea,product_reference,campaign_id,valid_from,valid_until,usage_permission,notes,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(title,source,clean(req.body.source_name,120),type,clean(req.body.category,80),clean(req.body.caption_original),clean(req.body.caption_orivea),inferredReference,req.body.campaign_id||null,req.body.valid_from||null,req.body.valid_until||null,permission,clean(req.body.notes),"new");
+    if(file)db.prepare(`INSERT INTO media_assets (content_item_id,media_type,media_path,thumbnail_path,original_name,mime_type,size) VALUES (?,?,?,?,?,?,?)`).run(result.lastInsertRowid,type,path.relative(appRoot,file.path),type==="image"?path.relative(appRoot,file.path):null,file.originalname,file.mimetype,file.size);
+    return {id:Number(result.lastInsertRowid),title};
+  }))();
+  for(const item of ids){writeAudit({entityType:"content",entityId:item.id,action:"create",byUser:req.session.user.username});queueContent(item.id,item.title,permission);}
+  res.status(201).json({items:ids.map(item=>getContent(item.id))});
 });
+router.post("/content/:id/action",(req,res)=>{const content=getContent(req.params.id);if(!content)return res.status(404).json({error:"Content niet gevonden."});const actions={make_post:"social post maken",today:"vandaag gebruiken",week:"deze week plannen",process:"verwerken"};if(!actions[req.body.action])return res.status(400).json({error:"Onbekende actie."});const description=req.body.action==="today"?"schedule:today":req.body.action==="week"?"schedule:week":"";const existing=description?db.prepare("SELECT id FROM studio_posts WHERE content_item_id=? AND status='draft' ORDER BY created_at DESC LIMIT 1").get(content.id):null;const id=queueTask({taskType:"analyze_content",title:`${content.title}: ${actions[req.body.action]}`,description,contentId:content.id,postId:existing?.id||null,priority:req.body.action==="today"?"high":"normal"});res.status(202).json({taskId:id});});
+router.post("/carousel",(req,res)=>{const ids=[...new Set((req.body.content_ids||[]).map(Number).filter(Boolean))];if(ids.length<2||ids.length>10)return res.status(400).json({error:"Selecteer 2 tot 10 afbeeldingen."});const placeholders=ids.map(()=>"?").join(",");const rows=db.prepare(`SELECT c.*,m.id media_id,m.media_type FROM content_items c JOIN media_assets m ON m.content_item_id=c.id WHERE c.id IN (${placeholders})`).all(...ids);if(rows.length!==ids.length||rows.some(row=>row.media_type!=="image"))return res.status(400).json({error:"Een carousel kan alleen uit afbeeldingen bestaan."});if(rows.some(row=>row.usage_permission==="unknown"))return res.status(409).json({error:"Controleer eerst de gebruiksrechten van alle afbeeldingen."});const postId=db.transaction(()=>{const post=db.prepare("INSERT INTO studio_posts(content_item_id,title,status) VALUES(?,?, 'draft')").run(rows[0].id,clean(req.body.title,180)||`Carousel: ${rows[0].title}`);rows.forEach((row,index)=>db.prepare("INSERT INTO post_media(post_id,media_asset_id,position) VALUES(?,?,?)").run(post.lastInsertRowid,row.media_id,index));return Number(post.lastInsertRowid);})();queueTask({taskType:"analyze_content",title:`Carousel voorbereiden: ${rows[0].title}`,description:"Maak één carousel-caption voor de geselecteerde afbeeldingen.",contentId:rows[0].id,postId});res.status(201).json({id:postId,status:"draft"});});
 router.put("/content/:id", (req, res) => {
   const existing = getContent(req.params.id); if (!existing) return res.status(404).json({ error:"Content niet gevonden." });
   const permission = permissions.has(req.body.usage_permission) ? req.body.usage_permission : existing.usage_permission;
