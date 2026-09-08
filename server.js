@@ -12,6 +12,7 @@ const { requireAuth, ensureCsrf, csrfProtection } = require("./src/workspace/mid
 const authRoutes = require("./src/workspace/routes/auth.routes");
 const pageRoutes = require("./src/workspace/routes/page.routes");
 const orderRoutes = require("./src/workspace/routes/orders.routes");
+const customerRoutes = require("./src/workspace/routes/customers.routes");
 const contactRoutes = require("./src/workspace/routes/contact.routes");
 const newsletterRoutes = require("./src/workspace/routes/newsletter.routes");
 const socialRoutes = require("./src/workspace/routes/social.routes");
@@ -25,6 +26,7 @@ const knowledgeRoutes = require("./src/workspace/routes/knowledge.routes");
 const scentClubRoutes = require("./src/workspace/routes/scent-club.routes");
 const { startAgent } = require("./src/workspace/agent");
 const { startScheduler } = require("./src/workspace/scheduler");
+const { startCommerceSync } = require("./src/workspace/commerce-sync");
 const SqliteSessionStore = require("./src/workspace/session-store");
 
 const app = express();
@@ -93,6 +95,7 @@ app.use("/api/agent", agentRoutes);
 app.use("/api/knowledge", knowledgeRoutes);
 app.use("/api/scent-club", scentClubRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/customers", customerRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/newsletter", newsletterRoutes);
 app.use("/api/social", socialRoutes);
@@ -123,6 +126,7 @@ const host = process.env.HOST || "127.0.0.1";
 const server = app.listen(port, host, () => {
   startScheduler();
   startAgent();
+  startCommerceSync();
   console.log(`ORIVEA Content Studio actief op http://${host}:${port}`);
 });
 

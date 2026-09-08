@@ -34,6 +34,68 @@ function initDb() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name TEXT,
+      phone TEXT,
+      address TEXT,
+      newsletter_opt_in INTEGER NOT NULL DEFAULT 0,
+      newsletter_opt_in_at TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      product_id TEXT NOT NULL,
+      product_name TEXT NOT NULL,
+      product_reference TEXT,
+      variant TEXT,
+      variant_label TEXT,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      line_total REAL NOT NULL,
+      FOREIGN KEY(order_id) REFERENCES orders(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS webshop_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL UNIQUE,
+      event_type TEXT NOT NULL,
+      aggregate_id TEXT,
+      payload TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id TEXT,
+      read_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS integration_health (
+      integration TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      last_event_at TEXT,
+      last_order_sync_at TEXT,
+      last_scent_club_sync_at TEXT,
+      last_error TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS products (
+      product_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT,
+      glantier_reference TEXT,
+      price REAL,
+      active INTEGER NOT NULL DEFAULT 1,
+      payload TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS contact_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT,
@@ -406,6 +468,18 @@ function initDb() {
   addColumn("studio_posts","quality_status","TEXT NOT NULL DEFAULT 'draft'");
   addColumn("studio_posts","knowledge_sources_used","TEXT");
   addColumn("studio_posts","content_brief","TEXT");
+  addColumn("orders","discounts","TEXT");
+  addColumn("orders","discount_amount","REAL NOT NULL DEFAULT 0");
+  addColumn("orders","paypal_order_id","TEXT");
+  addColumn("orders","newsletter_opt_in","INTEGER NOT NULL DEFAULT 0");
+  addColumn("orders","terms_accepted","INTEGER NOT NULL DEFAULT 0");
+  addColumn("orders","return_policy_accepted","INTEGER NOT NULL DEFAULT 0");
+  addColumn("orders","scent_club_discount","INTEGER NOT NULL DEFAULT 0");
+  addColumn("orders","scent_club_member_id","INTEGER");
+  addColumn("orders","fulfillment_status","TEXT NOT NULL DEFAULT 'unfulfilled'");
+  addColumn("orders","tracking_code","TEXT");
+  addColumn("orders","updated_at","TEXT");
+  addColumn("scent_club_members","member_code","TEXT");
 
   const defaults = {
     autoPublish: "false",

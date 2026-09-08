@@ -12,6 +12,7 @@ const monthKey = () => new Date().toISOString().slice(0, 7);
 const deadlineFor = (month) => `${month}-20`;
 const addMonth = (date) => { const value = new Date(`${date}T12:00:00Z`); value.setUTCMonth(value.getUTCMonth() + 1); return value.toISOString().slice(0, 10); };
 const actor = (req) => req.session.user?.username || "admin";
+const memberCode = () => `ORV-SC-${require("crypto").randomBytes(4).toString("hex").toUpperCase()}`;
 const event = ({ memberId = null, requestId = null, type, description, byUser, metadata = null }) => db.prepare(`INSERT INTO scent_club_events (member_id,request_id,event_type,description,by_user,metadata) VALUES (?,?,?,?,?,?)`).run(memberId, requestId, type, description, byUser, metadata ? JSON.stringify(metadata) : null);
 
 function summary() {
@@ -61,14 +62,14 @@ router.post("/requests/:id/status", (req, res) => {
   writeAudit({ entityType: "scent_club_request", entityId: row.id, action: "status_update", previousStatus: row.status, newStatus: status, byUser: actor(req) });
   return res.json(db.prepare("SELECT * FROM scent_club_requests WHERE id=?").get(row.id));
 });
-router.post("/requests/:id/convert", (req, res) => {
+router.post("/requests/:id/convert", async (req, res) => {
   const row = db.prepare("SELECT * FROM scent_club_requests WHERE id=?").get(req.params.id);
   if (!row) return res.status(404).json({ error: "Aanvraag niet gevonden." });
   if (row.converted_member_id || row.status === "converted") return res.status(409).json({ error: "Deze aanvraag is al omgezet." });
   if (!['approved','contacted','new'].includes(row.status)) return res.status(409).json({ error: "Afgewezen aanvraag kan niet worden omgezet." });
   const startedAt = String(req.body.started_at || new Date().toISOString().slice(0, 10));
   const convert = db.transaction(() => {
-    const result = db.prepare(`INSERT INTO scent_club_members (request_id,first_name,last_name,email,phone,plan,monthly_price,status,started_at,next_billing_date,preference_gender,preference_family,selection_mode,payment_status) VALUES (?,?,?,?,?,?,?,'active',?,?,?,?,?,'pending')`).run(row.id,row.first_name,row.last_name,row.email,row.phone,row.plan,row.monthly_price,startedAt,addMonth(startedAt),row.preference_gender,row.preference_family,row.selection_mode);
+    const result = db.prepare(`INSERT INTO scent_club_members (request_id,first_name,last_name,email,phone,plan,monthly_price,status,started_at,next_billing_date,preference_gender,preference_family,selection_mode,payment_status,member_code) VALUES (?,?,?,?,?,?,?,'active',?,?,?,?,?,'pending',?)`).run(row.id,row.first_name,row.last_name,row.email,row.phone,row.plan,row.monthly_price,startedAt,addMonth(startedAt),row.preference_gender,row.preference_family,row.selection_mode,memberCode());
     const memberId = Number(result.lastInsertRowid);
     db.prepare("UPDATE scent_club_requests SET status='converted',converted_member_id=?,last_action_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(memberId,row.id);
     db.prepare("INSERT INTO scent_club_selections (member_id,month,status,deadline) VALUES (?,?,'open',?)").run(memberId,monthKey(),deadlineFor(monthKey()));
@@ -76,6 +77,16 @@ router.post("/requests/:id/convert", (req, res) => {
     return memberId;
   });
   const memberId = convert();
+  const member = db.prepare("SELECT * FROM scent_club_members WHERE id=?").get(memberId);
+  if (process.env.WEBSHOP_SYNC_URL && process.env.WEBSHOP_SYNC_SECRET) {
+    try {
+      const response = await fetch(`${process.env.WEBSHOP_SYNC_URL.replace(/\/$/,"")}/api/scent-club/activate`,{method:"POST",headers:{Authorization:`Bearer ${process.env.WEBSHOP_SYNC_SECRET}`,"Content-Type":"application/json"},body:JSON.stringify({member_code:member.member_code,email:member.email,first_name:member.first_name,plan:member.plan,selection_mode:member.selection_mode,preference_gender:member.preference_gender,started_at:member.started_at,next_renewal_at:member.next_billing_date})});
+      if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch(error) {
+      console.error("Scent Club activatie sync mislukt:",error);
+      db.prepare(`INSERT INTO integration_health (integration,status,last_error,updated_at) VALUES ('webshop','error',?,CURRENT_TIMESTAMP) ON CONFLICT(integration) DO UPDATE SET status='error',last_error=excluded.last_error,updated_at=CURRENT_TIMESTAMP`).run(`Scent Club activatie: ${error.message}`);
+    }
+  }
   writeAudit({ entityType: "scent_club_member", entityId: memberId, action: "created_from_request", byUser: actor(req), metadata: { requestId: row.id } });
   return res.status(201).json({ id: memberId });
 });

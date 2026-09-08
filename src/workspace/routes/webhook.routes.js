@@ -3,9 +3,21 @@ const { db } = require("../db");
 const { verifyWebhookSecret } = require("../middleware");
 const { writeAudit } = require("../audit");
 const { toNumber } = require("../utils");
+const { ingestEvent } = require("../commerce-sync");
 
 const router = express.Router();
 router.use(verifyWebhookSecret);
+
+router.post("/event", (req, res) => {
+  try {
+    const eventId = String(req.get("X-Idempotency-Key") || req.body?.event_id || "").trim();
+    const result = ingestEvent({ ...req.body, event_id: eventId });
+    return res.status(result.duplicate ? 200 : 201).json({ ok: true, ...result });
+  } catch (error) {
+    console.error("Webshop event ingestion failed:", error);
+    return res.status(400).json({ error: error.message });
+  }
+});
 const scentClubAttempts = new Map();
 const scentClubSources = new Set(["orivea.nl", "www.orivea.nl", "emailjs", "scent-club"]);
 const scentClubPlans = { essential: 17.95, signature: 22.95, duo: 34.95 };

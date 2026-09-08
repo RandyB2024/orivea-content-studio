@@ -7,6 +7,7 @@ const appRoot = path.resolve(__dirname, "..", "..", "..");
 const pageMap = {
   "/dashboard": "dashboard.html",
   "/orders": "orders.html",
+  "/customers": "customers.html",
   "/contact": "contact.html",
   "/newsletter": "newsletter.html",
   "/social": "social.html",
@@ -25,6 +26,7 @@ const pageMap = {
   ,"/scent-club/members": "scent-club-members.html"
 };
 router.get("/scent-club/members/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","scent-club-member-detail.html"),error=>error&&next(error)));
+router.get("/orders/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","order-detail.html"),error=>error&&next(error)));
 router.get("/knowledge/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","knowledge-detail.html"),error=>error&&next(error)));
 router.get("/media/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","media-detail.html"),error=>error&&next(error)));
 router.get("/posts/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","post-preview.html"),error=>error&&next(error)));
@@ -63,6 +65,13 @@ router.get("/api/summary", (req, res) => {
       warning: "Dashboardgegevens konden nog niet worden geladen."
     });
   }
+});
+
+router.get("/api/integration-health", (req,res) => {
+  const health = db.prepare("SELECT * FROM integration_health WHERE integration='webshop'").get();
+  const pending = db.prepare("SELECT COUNT(*) count FROM orders WHERE payment_status='payment_pending'").get().count;
+  const unread = db.prepare("SELECT COUNT(*) count FROM notifications WHERE read_at IS NULL").get().count;
+  res.json({ webshop: health || { integration:"webshop",status:"not_configured" }, pendingOrders: pending, unreadNotifications: unread });
 });
 
 module.exports = router;

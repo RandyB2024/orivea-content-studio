@@ -9,6 +9,7 @@ const navItems = [
   ["Integraties", "/settings/integrations"],
   ["Scent Club", "/scent-club"],
   ["Orders", "/orders"],
+  ["Klanten", "/customers"],
   ["Contact", "/contact"],
   ["Nieuwsbrief", "/newsletter"],
   ["Social Agent", "/social"],
@@ -56,7 +57,7 @@ function bindSearch(loader) {
 }
 
 async function loadDashboard() {
-  const [data, scent] = await Promise.all([api("/api/studio/summary"), api("/api/scent-club/summary")]);
+  const [data, scent, commerce, health] = await Promise.all([api("/api/studio/summary"), api("/api/scent-club/summary"), api("/api/summary"), api("/api/integration-health")]);
   document.getElementById("summaryCards").innerHTML = [
     ["Content", data.content],
     ["Ongebruikt", data.unused],
@@ -66,10 +67,31 @@ async function loadDashboard() {
     ["Scent Club actief", scent.active],
     ["Scent Club aanvragen", scent.newRequests],
     ["Scent Club actie nodig", scent.actionRequired]
+    ,["Orders", commerce.orders]
+    ,["Open orders", commerce.openOrders]
+    ,["Omzet", money(commerce.revenue)]
   ].map(([label, value]) => `<article class="metric"><span>${label}</span><strong>${value}</strong></article>`).join("");
+  document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel"><p class="eyebrow">Webshop koppeling</p><h2>${health.webshop.status === "online" ? "Online" : "Aandacht nodig"}</h2><p>Laatste event: ${health.webshop.last_event_at || "Nog geen event"} · Laatste ordersync: ${health.webshop.last_order_sync_at || "Nog niet gesynchroniseerd"}</p><p>${health.pendingOrders} betaling(en) in afwachting · ${health.unreadNotifications} interne melding(en)</p></section>`);
   if (data.warning) {
     document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel notice"><p>${data.warning}</p></section>`);
   }
+}
+
+async function loadCustomers(q = "") {
+  const rows = await api(`/api/customers?q=${encodeURIComponent(q)}`);
+  document.getElementById("customersTable").innerHTML = rows.map((row) => `<tr><td><strong>${row.name || "-"}</strong><br><small>${row.email}</small><br><small>${row.phone || ""}</small></td><td>${row.order_count}</td><td>${money(row.total_spent)}</td><td>${row.newsletter_opt_in ? "Ja" : "Nee"}</td><td>${row.scent_club_member ? "Actief" : "Nee"}</td><td>${row.last_order || "-"}</td></tr>`).join("");
+}
+
+async function loadOrderDetail() {
+  const id = window.location.pathname.split("/").pop();
+  const row = await api(`/api/orders/${id}`);
+  document.getElementById("orderTitle").textContent = row.order_number;
+  document.getElementById("orderDetail").innerHTML = `<section class="panel"><h2>Klant</h2><p><strong>${row.customer_name || "-"}</strong><br>${row.customer_email || ""}<br>${row.customer_phone || ""}<br>${row.customer_address || ""}</p></section><section class="panel"><h2>Bedragen en betaling</h2><p>Subtotaal ${money(row.subtotal)}<br>Korting ${money(row.discount_amount)}<br>Verzending ${money(row.shipping_cost)}<br><strong>Totaal ${money(row.total)}</strong></p><p>Status: ${row.payment_status || "-"}<br>PayPal order: ${row.paypal_order_id || "-"}<br>Transactie: ${row.paypal_transaction_id || "-"}</p></section><section class="panel"><h2>Producten</h2>${row.items.map((item) => `<p>${item.quantity}x ${item.product_name} · ${item.variant_label || item.variant || ""} <strong>${money(item.line_total)}</strong></p>`).join("") || "<p>Geen orderregels.</p>"}</section><section class="panel"><h2>Toestemming en verwerking</h2><p>Nieuwsbrief: ${row.newsletter_opt_in ? "Ja" : "Nee"}<br>Voorwaarden: ${row.terms_accepted ? "Akkoord" : "Niet vastgelegd"}<br>Retourbeleid: ${row.return_policy_accepted ? "Akkoord" : "Niet vastgelegd"}<br>Scent Club korting: ${row.scent_club_discount ? "Ja" : "Nee"}</p><form id="orderUpdate"><label>Status<select name="status">${["Nieuw","In behandeling","Verzonden","Afgerond","Geannuleerd"].map((value) => `<option ${row.status === value ? "selected" : ""}>${value}</option>`).join("")}</select></label><label>Fulfillment<select name="fulfillment_status">${["unfulfilled","processing","shipped","fulfilled","cancelled","refunded"].map((value) => `<option ${row.fulfillment_status === value ? "selected" : ""}>${value}</option>`).join("")}</select></label><label>Tracking<input name="tracking_code" value="${row.tracking_code || ""}"></label><label>Interne notitie<textarea name="notes">${row.notes || ""}</textarea></label><button class="button button-primary">Opslaan</button></form></section><section class="panel"><h2>Tijdlijn</h2>${row.timeline.map((item) => `<p><strong>${item.event_type}</strong><br><small>${item.created_at}</small></p>`).join("") || "<p>Nog geen events.</p>"}</section>`;
+  document.getElementById("orderUpdate").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await api(`/api/orders/${id}`, { method:"PUT", body:JSON.stringify(Object.fromEntries(new FormData(event.currentTarget).entries())) });
+    await loadOrderDetail();
+  });
 }
 
 async function loadOrders(q = "") {
@@ -81,7 +103,7 @@ async function loadOrders(q = "") {
       <td>${money(row.total)}</td>
       <td>${row.payment_status || "-"}<br><small>${row.payment_method || ""}</small></td>
       <td><select data-order-status="${row.id}">${["Nieuw","In behandeling","Verzonden","Afgerond","Geannuleerd"].map((s) => `<option ${row.status === s ? "selected" : ""}>${s}</option>`).join("")}</select></td>
-      <td><button class="button button-secondary" data-save-order="${row.id}">Opslaan</button></td>
+      <td><button class="button button-secondary" data-save-order="${row.id}">Opslaan</button> <a class="button button-secondary" href="/orders/${row.id}">Details</a></td>
     </tr>
   `).join("");
   document.querySelectorAll("[data-save-order]").forEach((button) => {
@@ -173,6 +195,8 @@ function initPage() {
   const page = document.body.dataset.page;
   if (page === "dashboard") loadDashboard();
   if (page === "orders") { loadOrders(); bindSearch(loadOrders); }
+  if (page === "customers") { loadCustomers(); bindSearch(loadCustomers); }
+  if (page === "order-detail") loadOrderDetail();
   if (page === "contact") { loadContact(); bindSearch(loadContact); }
   if (page === "newsletter") { loadNewsletter(); bindSearch(loadNewsletter); }
   if (page === "audit") loadAudit();
