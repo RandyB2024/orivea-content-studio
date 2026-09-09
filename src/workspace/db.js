@@ -525,6 +525,14 @@ function initDb() {
   addColumn("orders","updated_at","TEXT");
   addColumn("orders","source","TEXT");
   addColumn("orders","mail_message_id","TEXT");
+  addColumn("orders","pay_later_status","TEXT");
+  addColumn("orders","pay_later_due_date","TEXT");
+  addColumn("orders","pay_later_approved_at","TEXT");
+  addColumn("orders","pay_later_shipped_at","TEXT");
+  addColumn("orders","pay_later_paid_at","TEXT");
+  addColumn("orders","pay_later_reminder_count","INTEGER NOT NULL DEFAULT 0");
+  addColumn("orders","pay_later_last_reminder_at","TEXT");
+  addColumn("orders","age_confirmed","INTEGER NOT NULL DEFAULT 0");
   addColumn("newsletter_events","request_id","TEXT");
   addColumn("newsletter_events","source","TEXT");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletter_request_id ON newsletter_events(request_id) WHERE request_id IS NOT NULL");

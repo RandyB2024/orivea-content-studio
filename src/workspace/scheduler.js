@@ -4,6 +4,7 @@ const allowedRights = new Set(["own_content", "approved", "shared_by_glantier"])
 let timer;
 
 function processDuePosts() {
+  db.prepare("UPDATE orders SET pay_later_status='overdue',updated_at=CURRENT_TIMESTAMP WHERE payment_method='pay_later' AND payment_status='unpaid' AND pay_later_due_date IS NOT NULL AND date(pay_later_due_date)<date('now') AND pay_later_status='shipped'").run();
   db.prepare("INSERT INTO agent_state(key,value,updated_at) VALUES('last_scheduler_run',?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").run(new Date().toISOString());
   const due = db.prepare(`SELECT p.id,p.scheduled_at,c.usage_permission FROM studio_posts p JOIN content_items c ON c.id=p.content_item_id WHERE p.status='scheduled' AND p.approved_at IS NOT NULL AND datetime(p.scheduled_at)<=datetime('now') LIMIT 10`).all();
   for (const post of due) {

@@ -25,6 +25,7 @@ const pageMap = {
   ,"/scent-club/requests": "scent-club-requests.html"
   ,"/scent-club/members": "scent-club-members.html"
   ,"/mail-intake": "mail-intake.html"
+  ,"/payments/open": "pay-later.html"
 };
 router.get("/scent-club/members/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","scent-club-member-detail.html"),error=>error&&next(error)));
 router.get("/orders/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","order-detail.html"),error=>error&&next(error)));
@@ -51,6 +52,11 @@ router.get("/api/summary", (req, res) => {
       newsletter: one("SELECT COUNT(*) AS count FROM newsletter_events"),
       socialDrafts: one("SELECT COUNT(*) AS count FROM social_posts WHERE status IN ('concept','drafts','draft')"),
       revenue,
+      payLaterReview: one("SELECT COUNT(*) count FROM orders WHERE payment_method='pay_later' AND pay_later_status='review_required'"),
+      payLaterOpen: one("SELECT COUNT(*) count FROM orders WHERE payment_method='pay_later' AND payment_status='unpaid'"),
+      payLaterOpenAmount: db.prepare("SELECT COALESCE(SUM(total),0) total FROM orders WHERE payment_method='pay_later' AND payment_status='unpaid'").get().total,
+      payLaterOverdue: one("SELECT COUNT(*) count FROM orders WHERE payment_method='pay_later' AND payment_status='unpaid' AND date(pay_later_due_date)<date('now')"),
+      payLaterPaidToday: one("SELECT COUNT(*) count FROM orders WHERE payment_method='pay_later' AND date(pay_later_paid_at)=date('now','localtime')"),
       warning: null
     });
   } catch (error) {

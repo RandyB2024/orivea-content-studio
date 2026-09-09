@@ -3,8 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const paymentMap = { payment_completed: "paid", payment_cancelled: "cancelled", payment_failed: "payment_failed", order_created: "payment_pending" };
-const notificationTitles = { payment_completed: "Nieuwe betaalde order", payment_failed: "Betaling mislukt", scent_club_request: "Nieuwe Scent Club aanvraag", subscription_cancel_requested: "Abonnement opzegging aangevraagd" };
+const paymentMap = { payment_completed: "paid", payment_cancelled: "cancelled", payment_failed: "payment_failed", order_created: "payment_pending", pay_later_order_created:"unpaid" };
+const notificationTitles = { payment_completed: "Nieuwe betaalde order", payment_failed: "Betaling mislukt", pay_later_order_created:"Achterafbetaling vereist controle", scent_club_request: "Nieuwe Scent Club aanvraag", subscription_cancel_requested: "Abonnement opzegging aangevraagd" };
 
 function ingestEvent(event) {
   if (!event?.event_id || !event?.event_type || !event?.payload) throw new Error("Ongeldig webshop-event.");
@@ -13,7 +13,7 @@ function ingestEvent(event) {
   const run = db.transaction(() => {
     const payload = event.payload;
     db.prepare("INSERT INTO webshop_events (event_id,event_type,aggregate_id,payload,created_at) VALUES (?,?,?,?,?)").run(event.event_id,event.event_type,event.aggregate_id || payload.order_number || null,JSON.stringify(payload),event.created_at || new Date().toISOString());
-    if (["order_created","payment_completed","payment_cancelled","payment_failed"].includes(event.event_type)) upsertOrder(payload,event.event_type);
+    if (["order_created","payment_completed","payment_cancelled","payment_failed","pay_later_order_created"].includes(event.event_type)) upsertOrder(payload,event.event_type);
     if (event.event_type === "newsletter_opt_in") upsertCustomer(payload.customer || payload,true,payload.newsletter_opt_in_at);
     if (event.event_type === "newsletter_opt_out") {
       upsertCustomer(payload.customer || payload,false,null);
@@ -48,6 +48,7 @@ function upsertOrder(payload, eventType) {
   db.prepare("DELETE FROM order_items WHERE order_id=?").run(order.id);
   const insert = db.prepare("INSERT INTO order_items (order_id,product_id,product_name,product_reference,variant,variant_label,quantity,unit_price,line_total) VALUES (?,?,?,?,?,?,?,?,?)");
   items.forEach((item) => insert.run(order.id,item.product_id,item.product_name,item.reference||null,item.variant||null,item.variant_label||null,Number(item.quantity)||1,Number(item.unit_price)||0,Number(item.line_total)||0));
+  if (payload.payment_method === "pay_later") db.prepare("UPDATE orders SET pay_later_status=?,pay_later_due_date=?,pay_later_approved_at=?,pay_later_shipped_at=?,pay_later_paid_at=?,pay_later_reminder_count=?,pay_later_last_reminder_at=?,age_confirmed=?,status=? WHERE id=?").run(payload.pay_later_status||"review_required",payload.pay_later_due_date||null,payload.pay_later_approved_at||null,payload.pay_later_shipped_at||null,payload.pay_later_paid_at||null,Number(payload.pay_later_reminder_count)||0,payload.pay_later_last_reminder_at||null,payload.age_confirmed?1:0,payload.order_status||"review_required",order.id);
 }
 
 async function syncOnce() {
