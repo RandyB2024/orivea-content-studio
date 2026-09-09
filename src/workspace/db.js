@@ -117,6 +117,50 @@ function initDb() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS customer_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id TEXT UNIQUE,
+      name TEXT,
+      email TEXT,
+      phone TEXT,
+      subject TEXT,
+      message TEXT,
+      source TEXT NOT NULL DEFAULT 'emailjs_email',
+      status TEXT NOT NULL DEFAULT 'new',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS b2b_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      request_id TEXT UNIQUE,
+      name TEXT,
+      company TEXT,
+      email TEXT,
+      phone TEXT,
+      business_type TEXT,
+      message TEXT,
+      source TEXT NOT NULL DEFAULT 'emailjs_email',
+      status TEXT NOT NULL DEFAULT 'new',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS mail_intake_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id TEXT NOT NULL UNIQUE,
+      request_id TEXT,
+      message_type TEXT,
+      subject TEXT,
+      sender TEXT,
+      received_at TEXT,
+      processed_at TEXT,
+      status TEXT NOT NULL DEFAULT 'processing',
+      linked_entity_type TEXT,
+      linked_entity_id TEXT,
+      error TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_mail_intake_status ON mail_intake_events(status, received_at);
+
     CREATE TABLE IF NOT EXISTS social_posts (
       id TEXT PRIMARY KEY,
       date TEXT,
@@ -479,7 +523,13 @@ function initDb() {
   addColumn("orders","fulfillment_status","TEXT NOT NULL DEFAULT 'unfulfilled'");
   addColumn("orders","tracking_code","TEXT");
   addColumn("orders","updated_at","TEXT");
+  addColumn("orders","source","TEXT");
+  addColumn("orders","mail_message_id","TEXT");
+  addColumn("newsletter_events","request_id","TEXT");
+  addColumn("newsletter_events","source","TEXT");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_newsletter_request_id ON newsletter_events(request_id) WHERE request_id IS NOT NULL");
   addColumn("scent_club_members","member_code","TEXT");
+  addColumn("scent_club_members","discount_percent","REAL NOT NULL DEFAULT 0");
 
   const defaults = {
     autoPublish: "false",

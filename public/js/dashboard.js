@@ -12,6 +12,7 @@ const navItems = [
   ["Klanten", "/customers"],
   ["Contact", "/contact"],
   ["Nieuwsbrief", "/newsletter"],
+  ["Mail Intake", "/mail-intake"],
   ["Social Agent", "/social"],
   ["Afbeeldingen", "/assets"],
   ["Auditlog", "/audit"],
@@ -22,6 +23,7 @@ let csrfToken = "";
 function money(value) {
   return new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(Number(value || 0));
 }
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g,(character)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]));
 
 async function api(url, options = {}) {
   if (!csrfToken) csrfToken = (await fetch("/api/studio/csrf").then((response) => response.json())).csrfToken;
@@ -57,7 +59,7 @@ function bindSearch(loader) {
 }
 
 async function loadDashboard() {
-  const [data, scent, commerce, health] = await Promise.all([api("/api/studio/summary"), api("/api/scent-club/summary"), api("/api/summary"), api("/api/integration-health")]);
+  const [data, scent, commerce, health, mail] = await Promise.all([api("/api/studio/summary"), api("/api/scent-club/summary"), api("/api/summary"), api("/api/integration-health"), api("/api/mail-intake/summary")]);
   document.getElementById("summaryCards").innerHTML = [
     ["Content", data.content],
     ["Ongebruikt", data.unused],
@@ -72,6 +74,7 @@ async function loadDashboard() {
     ,["Omzet", money(commerce.revenue)]
   ].map(([label, value]) => `<article class="metric"><span>${label}</span><strong>${value}</strong></article>`).join("");
   document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel"><p class="eyebrow">Webshop koppeling</p><h2>${health.webshop.status === "online" ? "Online" : "Aandacht nodig"}</h2><p>Laatste event: ${health.webshop.last_event_at || "Nog geen event"} · Laatste ordersync: ${health.webshop.last_order_sync_at || "Nog niet gesynchroniseerd"}</p><p>${health.pendingOrders} betaling(en) in afwachting · ${health.unreadNotifications} interne melding(en)</p></section>`);
+  document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel"><p class="eyebrow">Mail Intake</p><h2>${mail.status === "active" ? "Actief" : mail.status === "error" ? "Fout" : "Offline"}</h2><p>Laatste controle: ${mail.lastCheck || "Nog niet gecontroleerd"} · Vandaag verwerkt: ${mail.todayProcessed} · Wacht op controle: ${mail.reviewRequired}</p><p>${mail.lastError || (mail.configured ? "Mailboxagent staat gereed." : "Microsoft Graph is nog niet geconfigureerd.")}</p><a class="button button-secondary" href="/mail-intake">Open Mail Intake</a></section>`);
   if (data.warning) {
     document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel notice"><p>${data.warning}</p></section>`);
   }
@@ -128,6 +131,12 @@ async function loadNewsletter(q = "") {
   document.getElementById("newsletterTable").innerHTML = rows.map((row) => `
     <tr><td>${row.email || "-"}</td><td>${row.name || "-"}</td><td>${row.event_type || "-"}</td><td>${row.created_at || ""}</td></tr>
   `).join("");
+}
+
+async function loadMailIntake() {
+  const [summary, rows] = await Promise.all([api("/api/mail-intake/summary"), api("/api/mail-intake/events")]);
+  document.getElementById("mailMetrics").innerHTML = [["Status",summary.status === "active" ? "Actief" : summary.status === "error" ? "Fout" : "Offline"],["Laatste controle",summary.lastCheck || "Nog niet"],["Vandaag verwerkt",summary.todayProcessed],["Wacht op controle",summary.reviewRequired]].map(([label,value])=>`<article class="metric"><span>${label}</span><strong>${value}</strong></article>`).join("");
+  document.getElementById("mailEvents").innerHTML = rows.map(row=>`<tr><td data-label="Ontvangen">${escapeHtml(row.received_at || "-")}</td><td data-label="Type">${escapeHtml(row.message_type || "-")}</td><td data-label="Onderwerp">${escapeHtml(row.subject || "-")}<br><small>${escapeHtml(row.sender || "")}</small></td><td data-label="Status"><span class="status-badge status-${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td><td data-label="Koppeling / fout">${escapeHtml(row.error || (row.linked_entity_type ? `${row.linked_entity_type} #${row.linked_entity_id}` : "-"))}</td></tr>`).join("") || '<tr><td colspan="5">Nog geen relevante e-mails verwerkt.</td></tr>';
 }
 
 async function loadSocial() {
@@ -199,6 +208,14 @@ function initPage() {
   if (page === "order-detail") loadOrderDetail();
   if (page === "contact") { loadContact(); bindSearch(loadContact); }
   if (page === "newsletter") { loadNewsletter(); bindSearch(loadNewsletter); }
+  if (page === "mail-intake") {
+    loadMailIntake();
+    document.getElementById("syncMailbox").addEventListener("click", async () => {
+      const target=document.getElementById("mailSyncMessage"); target.textContent="Mailbox wordt gecontroleerd...";
+      try { const result=await api("/api/mail-intake/sync",{method:"POST",body:"{}"}); target.textContent=result.status === "offline" ? result.reason : `${result.processed} verwerkt, ${result.reviewRequired} wacht op controle.`; await loadMailIntake(); }
+      catch(error){target.textContent="Mailboxcontrole is mislukt. Bekijk de laatste fout hieronder."; await loadMailIntake();}
+    });
+  }
   if (page === "audit") loadAudit();
   if (page === "settings") {
     loadSettings();

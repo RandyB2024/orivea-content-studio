@@ -71,6 +71,7 @@ router.post("/requests/:id/convert", async (req, res) => {
   const convert = db.transaction(() => {
     const result = db.prepare(`INSERT INTO scent_club_members (request_id,first_name,last_name,email,phone,plan,monthly_price,status,started_at,next_billing_date,preference_gender,preference_family,selection_mode,payment_status,member_code) VALUES (?,?,?,?,?,?,?,'active',?,?,?,?,?,'pending',?)`).run(row.id,row.first_name,row.last_name,row.email,row.phone,row.plan,row.monthly_price,startedAt,addMonth(startedAt),row.preference_gender,row.preference_family,row.selection_mode,memberCode());
     const memberId = Number(result.lastInsertRowid);
+    db.prepare("UPDATE scent_club_members SET discount_percent=? WHERE id=?").run(["signature","duo"].includes(row.plan) ? 10 : 0,memberId);
     db.prepare("UPDATE scent_club_requests SET status='converted',converted_member_id=?,last_action_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?").run(memberId,row.id);
     db.prepare("INSERT INTO scent_club_selections (member_id,month,status,deadline) VALUES (?,?,'open',?)").run(memberId,monthKey(),deadlineFor(monthKey()));
     event({ memberId, requestId: row.id, type: "member_created", description: "Aanvraag omgezet naar actief lid.", byUser: actor(req) });
