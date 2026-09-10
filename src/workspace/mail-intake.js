@@ -39,6 +39,7 @@ function parseDataBlock(body) {
 
 function classify(message, data) {
   const type = String(data?.type || "").toLowerCase();
+  if (type === "pay_later_order") return "order";
   if (["scent_club_request", "order", "newsletter", "contact", "b2b_request"].includes(type)) return type;
   const haystack = `${message.subject || ""}\n${stripHtml(message.body?.content || message.body || "")}`.toLowerCase();
   if (haystack.includes("scent club aanvraag")) return "scent_club_request";
