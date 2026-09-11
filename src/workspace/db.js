@@ -160,6 +160,18 @@ function initDb() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_mail_intake_status ON mail_intake_events(status, received_at);
+    CREATE TABLE IF NOT EXISTS outlook_connections (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      account_email TEXT,
+      account_name TEXT,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'connected',
+      last_error TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
 
     CREATE TABLE IF NOT EXISTS social_posts (
       id TEXT PRIMARY KEY,

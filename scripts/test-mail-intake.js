@@ -30,7 +30,8 @@ assert.deepEqual(payLaterOrder,{payment_method:"pay_later",payment_status:"unpai
 assert.equal(processMessage(message("news",{type:"newsletter",request_id:"NEWS-1",email:"test@example.com",name:"Test",action:"subscribe"})).status,"processed");
 assert.equal(processMessage(message("contact",{type:"contact",request_id:"CONTACT-1",email:"test@example.com",name:"Test",message:"Vraag"})).status,"processed");
 assert.equal(processMessage(message("b2b",{type:"b2b_request",request_id:"B2B-1",email:"bedrijf@example.com",company:"Voorbeeld BV"})).status,"processed");
-assert.equal(processMessage({id:"broken",internetMessageId:"<broken@orivea.nl>",subject:"Onbekend",body:{content:"Geen datablok"}}).status,"review_required");
+assert.equal(processMessage({id:"broken",internetMessageId:"<broken@orivea.nl>",subject:"ORIVÈA Onbekend",body:{content:"Geen datablok"}}).status,"review_required");
+assert.equal(processMessage({id:"irrelevant",internetMessageId:"<irrelevant@example.com>",subject:"Privébericht",body:{content:"Geen relevante webshopdata"}}).status,"ignored");
 
 const graphMail = message("graph",{type:"contact",request_id:"CONTACT-2",email:"graph@example.com",message:"Graph test"});
 const mockFetch = async (url) => url.includes("login.microsoftonline.com")

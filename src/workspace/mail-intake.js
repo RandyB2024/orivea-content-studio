@@ -1,5 +1,6 @@
 const { db } = require("./db");
 const { emitEvent, state } = require("./agent");
+const outlook = require("./outlook-oauth");
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 const PLAN_PRICES = { essential: 17.95, signature: 22.95, duo: 34.95 };
@@ -7,7 +8,7 @@ let timer;
 let running = false;
 
 function configured() {
-  return Boolean(process.env.MAIL_TENANT_ID && process.env.MAIL_CLIENT_ID && process.env.MAIL_CLIENT_SECRET && process.env.MAILBOX_ADDRESS);
+  return outlook.status().connected || Boolean(process.env.MAIL_TENANT_ID && process.env.MAIL_CLIENT_ID && process.env.MAIL_CLIENT_SECRET && process.env.MAILBOX_ADDRESS);
 }
 
 function stripHtml(value = "") {
@@ -48,6 +49,13 @@ function classify(message, data) {
   if (/nieuwsbrief (aanmelding|afmelding)/.test(haystack)) return "newsletter";
   if (/contactaanvraag|contactformulier/.test(haystack)) return "contact";
   return "unknown";
+}
+
+function relevant(message, data) {
+  if (data && classify(message, data) !== "unknown") return true;
+  const recipients = [...(message.toRecipients || []), ...(message.ccRecipients || [])].map((item) => item.emailAddress?.address || "").join(" ");
+  const haystack = `${message.subject || ""}\n${message.sender?.emailAddress?.address || ""}\n${recipients}\n${stripHtml(message.bodyPreview || "")}`.toLowerCase();
+  return /oriv[eè]a|scent club|ordernummer|achteraf betalen|contactaanvraag|b2b aanvraag|nieuwsbrief aanmelding/.test(haystack);
 }
 
 function money(value) {
@@ -122,6 +130,7 @@ function processMessage(message) {
   if (known) return { status: "duplicate", event: known };
   const body = message.body?.content || message.body || "";
   const data = parseDataBlock(body);
+  if (!relevant(message, data)) return { status:"ignored" };
   const type = classify(message, data);
   const sender = message.sender?.emailAddress?.address || message.from?.emailAddress?.address || "";
   const eventId = Number(db.prepare("INSERT INTO mail_intake_events (message_id,request_id,message_type,subject,sender,received_at) VALUES (?,?,?,?,?,?)").run(messageId,data?.request_id || data?.order_number || null,type,message.subject || "",sender,message.receivedDateTime || new Date().toISOString()).lastInsertRowid);
@@ -146,7 +155,7 @@ function processMessage(message) {
   }
 }
 
-async function accessToken(fetchImpl = fetch) {
+async function appAccessToken(fetchImpl = fetch) {
   const body = new URLSearchParams({ client_id:process.env.MAIL_CLIENT_ID,client_secret:process.env.MAIL_CLIENT_SECRET,scope:"https://graph.microsoft.com/.default",grant_type:"client_credentials" });
   const response = await fetchImpl(`https://login.microsoftonline.com/${encodeURIComponent(process.env.MAIL_TENANT_ID)}/oauth2/v2.0/token`,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body});
   if (!response.ok) throw new Error(`Microsoft token geweigerd (${response.status})`);
@@ -154,10 +163,14 @@ async function accessToken(fetchImpl = fetch) {
 }
 
 async function graphMessages(fetchImpl = fetch) {
-  const token = await accessToken(fetchImpl);
-  const checkpoint = db.prepare("SELECT value FROM agent_state WHERE key='last_mail_sync_at'").get()?.value || new Date(Date.now() - 14 * 86400000).toISOString();
-  const params = new URLSearchParams({"$select":"id,internetMessageId,subject,sender,from,receivedDateTime,body,bodyPreview","$filter":`receivedDateTime ge ${checkpoint}`,"$orderby":"receivedDateTime asc","$top":"100"});
-  let url = `${GRAPH_ROOT}/users/${encodeURIComponent(process.env.MAILBOX_ADDRESS)}/mailFolders/inbox/messages?${params}`;
+  const delegated = outlook.status().connected;
+  const token = delegated ? await outlook.accessToken(fetchImpl) : await appAccessToken(fetchImpl);
+  const lastSync = db.prepare("SELECT value FROM agent_state WHERE key='last_mail_sync_at'").get()?.value;
+  const checkpoint = lastSync ? new Date(new Date(lastSync).getTime() - 24 * 3600000).toISOString() : new Date(Date.now() - 14 * 86400000).toISOString();
+  const params = new URLSearchParams({"$select":"id,internetMessageId,subject,sender,from,toRecipients,ccRecipients,receivedDateTime,body,bodyPreview","$filter":`receivedDateTime ge ${checkpoint}`,"$orderby":"receivedDateTime asc","$top":"100"});
+  let url = delegated
+    ? `${GRAPH_ROOT}/me/mailFolders/inbox/messages?${params}`
+    : `${GRAPH_ROOT}/users/${encodeURIComponent(process.env.MAILBOX_ADDRESS)}/mailFolders/inbox/messages?${params}`;
   const messages = [];
   while (url && messages.length < 500) {
     const response = await fetchImpl(url,{headers:{Authorization:`Bearer ${token}`,Prefer:'outlook.body-content-type="text"'}});
@@ -176,11 +189,12 @@ async function syncMailbox({ fetchImpl = fetch } = {}) {
   const checkedAt = new Date().toISOString();
   try {
     const messages = await graphMessages(fetchImpl);
-    const report = { status:"active", checkedAt, found:messages.length, processed:0, reviewRequired:0, duplicates:0 };
+    const report = { status:"active", checkedAt, found:messages.length, processed:0, ignored:0, reviewRequired:0, duplicates:0 };
     for (const message of messages) {
       const result = processMessage(message);
       if (result.status === "processed") report.processed += 1;
       else if (result.status === "review_required") report.reviewRequired += 1;
+      else if (result.status === "ignored") report.ignored += 1;
       else report.duplicates += 1;
       state("last_processed_message_id", message.internetMessageId || message.id || "");
     }
@@ -197,16 +211,17 @@ function summary() {
   const today = db.prepare("SELECT COUNT(*) count FROM mail_intake_events WHERE status='processed' AND date(processed_at)=date('now','localtime')").get().count;
   const review = db.prepare("SELECT COUNT(*) count FROM mail_intake_events WHERE status='review_required'").get().count;
   const get = (key) => db.prepare("SELECT value FROM agent_state WHERE key=?").get(key)?.value || "";
-  return { configured:configured(), status:configured() ? (get("mail_intake_status") || "offline") : "offline", lastCheck:get("last_mail_sync_at") || null, todayProcessed:today, reviewRequired:review, lastError:get("mail_intake_last_error") || null };
+  const connection = outlook.status();
+  return { configured:configured(), connected:connection.connected, account:connection.accountEmail, connectionStatus:connection.status, status:configured() ? (get("mail_intake_status") || "offline") : "offline", lastCheck:get("last_mail_sync_at") || null, todayProcessed:today, reviewRequired:review, lastError:get("mail_intake_last_error") || connection.lastError || null };
 }
 
 function startMailIntake() {
   if (timer) return timer;
-  const interval = Math.max(1, Number(process.env.MAIL_POLL_INTERVAL_MINUTES || 3)) * 60000;
+  const interval = Math.max(1, Number(process.env.OUTLOOK_SYNC_INTERVAL_MINUTES || process.env.MAIL_POLL_INTERVAL_MINUTES || 3)) * 60000;
   setTimeout(() => syncMailbox().catch(() => {}), 3000).unref?.();
   timer = setInterval(() => syncMailbox().catch(() => {}), interval);
   timer.unref?.();
   return timer;
 }
 
-module.exports = { parseDataBlock, classify, processMessage, syncMailbox, summary, startMailIntake };
+module.exports = { parseDataBlock, classify, relevant, processMessage, syncMailbox, summary, startMailIntake };

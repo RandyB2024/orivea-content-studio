@@ -14,6 +14,7 @@ const navItems = [
   ["Contact", "/contact"],
   ["Nieuwsbrief", "/newsletter"],
   ["Mail Intake", "/mail-intake"],
+  ["Outlook", "/settings/outlook"],
   ["Social Agent", "/social"],
   ["Afbeeldingen", "/assets"],
   ["Auditlog", "/audit"],
@@ -79,7 +80,7 @@ async function loadDashboard() {
     ,["Achteraf vandaag betaald", commerce.payLaterPaidToday || 0]
   ].map(([label, value]) => `<article class="metric"><span>${label}</span><strong>${value}</strong></article>`).join("");
   document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel"><p class="eyebrow">Webshop koppeling</p><h2>${health.webshop.status === "online" ? "Online" : "Aandacht nodig"}</h2><p>Laatste event: ${health.webshop.last_event_at || "Nog geen event"} · Laatste ordersync: ${health.webshop.last_order_sync_at || "Nog niet gesynchroniseerd"}</p><p>${health.pendingOrders} betaling(en) in afwachting · ${health.unreadNotifications} interne melding(en)</p></section>`);
-  document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel"><p class="eyebrow">Mail Intake</p><h2>${mail.status === "active" ? "Actief" : mail.status === "error" ? "Fout" : "Offline"}</h2><p>Laatste controle: ${mail.lastCheck || "Nog niet gecontroleerd"} · Vandaag verwerkt: ${mail.todayProcessed} · Wacht op controle: ${mail.reviewRequired}</p><p>${mail.lastError || (mail.configured ? "Mailboxagent staat gereed." : "Microsoft Graph is nog niet geconfigureerd.")}</p><a class="button button-secondary" href="/mail-intake">Open Mail Intake</a></section>`);
+  document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel"><p class="eyebrow">Outlook Mail Intake</p><h2>${mail.status === "active" ? "Actief" : mail.connectionStatus === "reauth_required" ? "Opnieuw koppelen" : mail.status === "error" ? "Fout" : "Offline"}</h2><p>Account: ${escapeHtml(mail.account || "Niet verbonden")} · Laatste controle: ${mail.lastCheck || "Nog niet gecontroleerd"}</p><p>Vandaag verwerkt: ${mail.todayProcessed} · Wacht op controle: ${mail.reviewRequired}</p><p>${escapeHtml(mail.lastError || (mail.configured ? "Mailboxagent staat gereed." : "Microsoft Graph is nog niet geconfigureerd."))}</p><a class="button button-secondary" href="/settings/outlook">Outlook beheren</a></section>`);
   if (data.warning) {
     document.getElementById("summaryCards").insertAdjacentHTML("afterend", `<section class="panel notice"><p>${data.warning}</p></section>`);
   }
@@ -146,6 +147,21 @@ async function loadMailIntake() {
   const [summary, rows] = await Promise.all([api("/api/mail-intake/summary"), api("/api/mail-intake/events")]);
   document.getElementById("mailMetrics").innerHTML = [["Status",summary.status === "active" ? "Actief" : summary.status === "error" ? "Fout" : "Offline"],["Laatste controle",summary.lastCheck || "Nog niet"],["Vandaag verwerkt",summary.todayProcessed],["Wacht op controle",summary.reviewRequired]].map(([label,value])=>`<article class="metric"><span>${label}</span><strong>${value}</strong></article>`).join("");
   document.getElementById("mailEvents").innerHTML = rows.map(row=>`<tr><td data-label="Ontvangen">${escapeHtml(row.received_at || "-")}</td><td data-label="Type">${escapeHtml(row.message_type || "-")}</td><td data-label="Onderwerp">${escapeHtml(row.subject || "-")}<br><small>${escapeHtml(row.sender || "")}</small></td><td data-label="Status"><span class="status-badge status-${escapeHtml(row.status)}">${escapeHtml(row.status)}</span></td><td data-label="Koppeling / fout">${escapeHtml(row.error || (row.linked_entity_type ? `${row.linked_entity_type} #${row.linked_entity_id}` : "-"))}</td></tr>`).join("") || '<tr><td colspan="5">Nog geen relevante e-mails verwerkt.</td></tr>';
+}
+
+async function loadMailReview() {
+  const rows = await api("/api/mail-intake/events?status=review_required");
+  document.getElementById("mailReviewEvents").innerHTML = rows.map(row=>`<tr><td data-label="Ontvangen">${escapeHtml(row.received_at||"-")}</td><td data-label="Onderwerp">${escapeHtml(row.subject||"-")}</td><td data-label="Vermoedelijk type">${escapeHtml(row.message_type||"onbekend")}</td><td data-label="Parsefout">${escapeHtml(row.error||"Handmatige controle nodig")}</td></tr>`).join("")||'<tr><td colspan="4">Geen mails die op controle wachten.</td></tr>';
+}
+
+async function loadOutlookSettings() {
+  const [status, mail] = await Promise.all([api("/api/outlook/status"),api("/api/mail-intake/summary")]);
+  document.getElementById("outlookStatus").textContent = status.connected ? "Verbonden" : status.status === "reauth_required" ? "Opnieuw koppelen" : status.configured ? "Niet verbonden" : "Niet geconfigureerd";
+  document.getElementById("outlookAccount").textContent = status.accountEmail || "-";
+  document.getElementById("outlookLastSync").textContent = mail.lastCheck || "Nog niet gesynchroniseerd";
+  document.getElementById("connectOutlook").textContent = status.status === "reauth_required" ? "Outlook opnieuw koppelen" : "Outlook koppelen";
+  document.getElementById("disconnectOutlook").hidden = !status.connected;
+  document.getElementById("syncOutlook").disabled = !status.connected;
 }
 
 async function loadSocial() {
@@ -225,6 +241,13 @@ function initPage() {
       try { const result=await api("/api/mail-intake/sync",{method:"POST",body:"{}"}); target.textContent=result.status === "offline" ? result.reason : `${result.processed} verwerkt, ${result.reviewRequired} wacht op controle.`; await loadMailIntake(); }
       catch(error){target.textContent="Mailboxcontrole is mislukt. Bekijk de laatste fout hieronder."; await loadMailIntake();}
     });
+  }
+  if (page === "mail-intake-review") loadMailReview();
+  if (page === "outlook-settings") {
+    loadOutlookSettings();
+    document.getElementById("connectOutlook").addEventListener("click",async()=>{const result=await api("/api/outlook/connect",{method:"POST",body:"{}"});window.location.assign(result.url);});
+    document.getElementById("syncOutlook").addEventListener("click",async()=>{const target=document.getElementById("outlookMessage");target.textContent="Outlook wordt gecontroleerd...";try{const result=await api("/api/mail-intake/sync",{method:"POST",body:"{}"});target.textContent=`${result.found||0} gecontroleerd, ${result.processed||0} verwerkt, ${result.ignored||0} genegeerd, ${result.reviewRequired||0} vraagt controle.`;await loadOutlookSettings();}catch(error){target.textContent="Synchronisatie mislukt. Controleer de verbindingsstatus.";}});
+    document.getElementById("disconnectOutlook").addEventListener("click",async()=>{if(!confirm("Outlook ontkoppelen? Bestaande records blijven behouden."))return;await api("/api/outlook/disconnect",{method:"POST",body:"{}"});await loadOutlookSettings();});
   }
   if (page === "audit") loadAudit();
   if (page === "settings") {

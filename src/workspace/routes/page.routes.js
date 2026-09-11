@@ -25,6 +25,8 @@ const pageMap = {
   ,"/scent-club/requests": "scent-club-requests.html"
   ,"/scent-club/members": "scent-club-members.html"
   ,"/mail-intake": "mail-intake.html"
+  ,"/mail-intake/review": "mail-intake-review.html"
+  ,"/settings/outlook": "outlook-settings.html"
   ,"/payments/open": "pay-later.html"
 };
 router.get("/scent-club/members/:id",(req,res,next)=>res.sendFile(path.join(appRoot,"views","scent-club-member-detail.html"),error=>error&&next(error)));

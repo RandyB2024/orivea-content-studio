@@ -25,6 +25,7 @@ const agentRoutes = require("./src/workspace/routes/agent.routes");
 const knowledgeRoutes = require("./src/workspace/routes/knowledge.routes");
 const scentClubRoutes = require("./src/workspace/routes/scent-club.routes");
 const mailIntakeRoutes = require("./src/workspace/routes/mail-intake.routes");
+const outlookRoutes = require("./src/workspace/routes/outlook.routes");
 const { startAgent } = require("./src/workspace/agent");
 const { startScheduler } = require("./src/workspace/scheduler");
 const { startCommerceSync } = require("./src/workspace/commerce-sync");
@@ -86,6 +87,7 @@ app.get("/health", (req, res) => res.json({ status: "ok" }));
 app.get("/", (req, res) => res.redirect(req.session.user ? "/dashboard" : "/login"));
 
 app.use(authRoutes);
+app.use(outlookRoutes.callbackRouter);
 app.use("/api/webhooks", webhookRoutes);
 
 app.use(requireAuth);
@@ -97,6 +99,7 @@ app.use("/api/agent", agentRoutes);
 app.use("/api/knowledge", knowledgeRoutes);
 app.use("/api/scent-club", scentClubRoutes);
 app.use("/api/mail-intake", mailIntakeRoutes);
+app.use("/api/outlook", outlookRoutes.protectedRouter);
 app.use("/api/orders", orderRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/contact", contactRoutes);
